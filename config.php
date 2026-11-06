@@ -22,6 +22,7 @@ const DENDA_PER_HARI  = 1000;  // rupiah, per buku per hari terlambat
 const DENDA_KONDISI   = ['baik' => 0, 'rusak' => 50000, 'hilang' => 150000];
 const BATAS_AMBIL     = 2;     // hari: buku fisik harus diambil setelah disetujui petugas, lewat itu batal otomatis
 const BATAS_GILIRAN   = 2;     // hari: eksemplar disimpan untuk anggota yang mendapat giliran antrean
+const DIR_FOTO        = __DIR__ . '/assets/foto/';
 
 // Jam layanan per hari (1 = Senin ... 7 = Minggu), null = tutup
 const JAM_LAYANAN = [
@@ -69,8 +70,16 @@ function rawat_data(): void
         }
         db()->commit();
     }
-    // Giliran antrean yang tidak dipakai hangus
-    q('DELETE FROM antrean WHERE tgl_tersedia < CURDATE() - INTERVAL ' . BATAS_GILIRAN . ' DAY');
+    // Giliran antrean yang tidak dipakai hangus, anggotanya diberi tahu
+    $giliranLewat = 'a.tgl_tersedia < CURDATE() - INTERVAL ' . BATAS_GILIRAN . ' DAY';
+    if (q("SELECT 1 FROM antrean a WHERE $giliranLewat LIMIT 1")->fetch()) {
+        db()->beginTransaction();
+        foreach (q("SELECT a.id, a.user_id, b.judul FROM antrean a JOIN buku b ON b.id = a.buku_id WHERE $giliranLewat FOR UPDATE")->fetchAll() as $a) {
+            q('INSERT INTO pemberitahuan (user_id, pesan) VALUES (?, ?)', [$a['user_id'], 'Giliran antrean buku fisik “' . $a['judul'] . '” hangus karena tidak dipinjam dalam ' . BATAS_GILIRAN . ' hari. Antre lagi bila masih membutuhkannya.']);
+            q('DELETE FROM antrean WHERE id = ?', [$a['id']]);
+        }
+        db()->commit();
+    }
     // Eksemplar kosong diberikan ke antrean terdepan
     foreach (q('SELECT DISTINCT buku_id FROM antrean WHERE tgl_tersedia IS NULL')->fetchAll(PDO::FETCH_COLUMN) as $bukuId) {
         $kosong = (int) q('SELECT b.stok - ' . SQL_DIPINJAM . ' FROM buku b WHERE b.id = ?', [$bukuId])->fetchColumn();
@@ -264,7 +273,7 @@ function sampul(array $b, string $ukuran = 'md'): string
  */
 function validasi_anggota(array $in, int $idSendiri = 0): array
 {
-    $d = ['nama' => trim($in['nama'] ?? ''), 'email' => strtolower(trim($in['email'] ?? '')), 'telepon' => trim($in['telepon'] ?? '')];
+    $d = ['nama' => trim($in['nama'] ?? ''), 'email' => strtolower(trim($in['email'] ?? '')), 'telepon' => trim($in['telepon'] ?? ''), 'username' => ltrim(trim($in['username'] ?? ''), '@')];
     $galat = [];
     if (mb_strlen($d['nama']) < 3 || mb_strlen($d['nama']) > 100) $galat['nama'] = 'Isi nama lengkap (3–100 karakter).';
     elseif (!preg_match("/^[\\p{L}][\\p{L} .,'\\-]*$/u", $d['nama'])) $galat['nama'] = 'Nama hanya boleh berisi huruf, spasi, titik, koma, tanda petik, atau strip.';
@@ -272,7 +281,49 @@ function validasi_anggota(array $in, int $idSendiri = 0): array
     elseif (!filter_var($d['email'], FILTER_VALIDATE_EMAIL) || strlen($d['email']) > 120) $galat['email'] = 'Format email belum benar, contoh: nama@kampus.ac.id';
     elseif (q('SELECT 1 FROM users WHERE email = ? AND id <> ?', [$d['email'], $idSendiri])->fetch()) $galat['email'] = $idSendiri ? 'Email ini sudah dipakai akun lain.' : 'Email ini sudah terdaftar. Coba masuk saja.';
     if ($d['telepon'] !== '' && !preg_match('/^\+?[0-9 \-]{8,16}$/', $d['telepon'])) $galat['telepon'] = 'Nomor telepon hanya angka, 8–16 digit.';
+    if ($d['username'] !== '') {
+        if (!preg_match('/^[A-Za-z0-9._]{3,20}$/', $d['username'])) $galat['username'] = 'Username 3–20 karakter: huruf, angka, titik, atau garis bawah.';
+        elseif (q('SELECT 1 FROM users WHERE username = ? AND id <> ?', [$d['username'], $idSendiri])->fetch()) $galat['username'] = 'Username ini sudah dipakai.';
+    }
     return [$d, $galat];
+}
+
+/**
+ * Foto dipotong persegi dari tengah lalu dibuat ulang jadi JPEG 256px: ukuran seragam dan isi selain gambar ikut terbuang.
+ * @return array{0: ?string, 1: ?string} [nama file tersimpan, galat]
+ */
+function simpan_foto(array $f): array
+{
+    if ($f['error'] === UPLOAD_ERR_NO_FILE) return [null, null];
+    if ($f['error'] !== UPLOAD_ERR_OK) return [null, 'Upload foto gagal. Coba file lain.'];
+    if ($f['size'] > 5 * 1024 * 1024) return [null, 'Foto maksimal 5 MB.'];
+    $info = @getimagesize($f['tmp_name']);
+    if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) return [null, 'Foto harus gambar JPG, PNG, atau WebP.'];
+    if ($info[0] * $info[1] > 40_000_000) return [null, 'Resolusi foto terlalu besar.'];
+    $src = @imagecreatefromstring(file_get_contents($f['tmp_name']));
+    if (!$src) return [null, 'Foto tidak bisa dibaca.'];
+    // Foto ponsel sering disimpan miring dengan penanda EXIF
+    if ($info[2] === IMAGETYPE_JPEG && function_exists('exif_read_data')) {
+        $putar = [3 => 180, 6 => -90, 8 => 90][@exif_read_data($f['tmp_name'])['Orientation'] ?? 1] ?? 0;
+        if ($putar) $src = imagerotate($src, $putar, 0);
+    }
+    $sisi = min(imagesx($src), imagesy($src));
+    $dst = imagecreatetruecolor(256, 256);
+    imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255)); // latar putih untuk PNG transparan
+    imagecopyresampled($dst, $src, 0, 0, intdiv(imagesx($src) - $sisi, 2), intdiv(imagesy($src) - $sisi, 2), 256, 256, $sisi, $sisi);
+    if (!is_dir(DIR_FOTO)) mkdir(DIR_FOTO);
+    $nama = bin2hex(random_bytes(12)) . '.jpg';
+    $ok = imagejpeg($dst, DIR_FOTO . $nama, 85);
+    imagedestroy($src);
+    imagedestroy($dst);
+    return $ok ? [$nama, null] : [null, 'Foto gagal disimpan.'];
+}
+
+/** Foto profil, atau huruf awal nama bila belum ada foto. */
+function avatar(array $u, string $ukuran = 'sm'): string
+{
+    if (!empty($u['foto'])) return '<img class="avatar avatar--' . $ukuran . '" src="' . url('assets/foto/' . rawurlencode($u['foto'])) . '" alt="">';
+    return '<span class="avatar avatar--' . $ukuran . '" aria-hidden="true">' . e(mb_strtoupper(mb_substr($u['nama'], 0, 1))) . '</span>';
 }
 
 /**
@@ -287,8 +338,8 @@ function daftarkan_anggota(array $in): array
     if (isset($in['password2']) && $pw !== $in['password2']) $galat['password2'] = 'Kedua kata sandi belum sama.';
     if ($galat) return [null, $galat];
 
-    q('INSERT INTO users (no_anggota, nama, email, telepon, password) VALUES (?, ?, ?, ?, ?)',
-        [uniqid('tmp'), $d['nama'], $d['email'], $d['telepon'] ?: null, password_hash($pw, PASSWORD_DEFAULT)]);
+    q('INSERT INTO users (no_anggota, nama, email, username, telepon, password) VALUES (?, ?, ?, ?, ?, ?)',
+        [uniqid('tmp'), $d['nama'], $d['email'], $d['username'] ?: null, $d['telepon'] ?: null, password_hash($pw, PASSWORD_DEFAULT)]);
     $id = (int) db()->lastInsertId();
     q('UPDATE users SET no_anggota = ? WHERE id = ?', [sprintf('AGT-%s%03d', date('y'), $id), $id]);
     return [q('SELECT * FROM users WHERE id = ?', [$id])->fetch(), []];

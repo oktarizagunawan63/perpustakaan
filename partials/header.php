@@ -53,7 +53,7 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
           <a href="<?= url('pinjaman.php') ?>"<?= $navAktif('pinjaman') ?>>Pinjaman saya<?php if ($jmlPinjam): ?>
             <span class="nav__badge<?= $jmlTelat ? ' is-late' : '' ?>" title="<?= $jmlPinjam ?> buku dipinjam<?= $jmlTelat ? ", $jmlTelat terlambat" : '' ?>"><?= $jmlPinjam ?><span class="sr-only"> buku dipinjam<?= $jmlTelat ? ", $jmlTelat terlambat" : '' ?></span></span><?php endif ?><?php if ($jmlPesan): ?>
             <span class="nav__badge is-late" title="<?= $jmlPesan ?> pemberitahuan baru">!<span class="sr-only"> <?= $jmlPesan ?> pemberitahuan baru</span></span><?php endif ?></a>
-          <a href="<?= url('akun.php') ?>"<?= $navAktif('akun') ?>>Akun saya</a>
+          <a class="nav__akun" href="<?= url('akun.php') ?>"<?= $navAktif('akun') ?>><?= avatar($u) ?><?= e(!empty($u['username']) ? '@' . $u['username'] : 'Akun saya') ?></a>
         <?php endif ?>
         <a href="<?= url('logout.php') ?>">Keluar</a>
       <?php else: ?>

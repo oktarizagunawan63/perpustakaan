@@ -32,9 +32,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['profil'])) {
         [$masukan, $galat] = validasi_anggota($_POST, (int) $u['id']);
+        // Foto baru disimpan hanya bila isian lain sudah benar, supaya tidak ada file yatim
         if (!$galat) {
-            q('UPDATE users SET nama = ?, email = ?, telepon = ? WHERE id = ?', [$masukan['nama'], $masukan['email'], $masukan['telepon'] ?: null, $u['id']]);
-            $_SESSION['user'] = array_merge($u, $masukan);
+            [$fotoBaru, $galatFoto] = simpan_foto($_FILES['foto'] ?? ['error' => UPLOAD_ERR_NO_FILE]);
+            if ($galatFoto) $galat['foto'] = $galatFoto;
+        }
+        if (!$galat) {
+            $fotoLama = q('SELECT foto FROM users WHERE id = ?', [$u['id']])->fetchColumn() ?: null;
+            $foto = $fotoBaru ?? (isset($_POST['hapus_foto']) ? null : $fotoLama);
+            q('UPDATE users SET nama = ?, email = ?, username = ?, telepon = ?, foto = ? WHERE id = ?',
+                [$masukan['nama'], $masukan['email'], $masukan['username'] ?: null, $masukan['telepon'] ?: null, $foto, $u['id']]);
+            if ($fotoLama && $fotoLama !== $foto && is_file(DIR_FOTO . $fotoLama)) unlink(DIR_FOTO . $fotoLama);
+            $_SESSION['user'] = array_merge($u, $masukan, ['foto' => $foto]);
             flash('ok', 'Profil diperbarui.');
             redirect('akun.php#profil');
         }
@@ -81,7 +90,7 @@ require __DIR__ . '/partials/header.php';
   <header class="account__head">
     <div>
       <p class="eyebrow">Akun anggota</p>
-      <h1>Halo, <?= e(explode(' ', $akun['nama'])[0]) ?>.</h1>
+      <div class="account__hello"><?= avatar($akun, 'lg') ?><h1>Halo, <?= e(explode(' ', $akun['nama'])[0]) ?>.</h1></div>
       <p class="muted">
         <?php if (!$r['aktif']): ?>Tidak ada buku yang sedang kamu pinjam.
         <?php else: ?>Kamu sedang meminjam <?= (int) $r['aktif'] ?> buku<?= $r['telat'] ? ', ' . (int) $r['telat'] . ' di antaranya terlambat' : '' ?>.<?php endif ?>
@@ -91,7 +100,7 @@ require __DIR__ . '/partials/header.php';
 
     <div class="member-card" aria-label="Kartu anggota">
       <span class="member-card__org"><?= e(NAMA_PERPUS) ?></span>
-      <span class="member-card__name"><?= e($akun['nama']) ?></span>
+      <span class="member-card__name"><?= e($akun['nama']) ?><?php if ($akun['username']): ?><small>@<?= e($akun['username']) ?></small><?php endif ?></span>
       <span class="member-card__no"><?= e($akun['no_anggota']) ?></span>
       <span class="member-card__bars" aria-hidden="true"></span>
     </div>
@@ -182,12 +191,25 @@ require __DIR__ . '/partials/header.php';
     <h2>Profil &amp; kata sandi</h2>
     <p class="muted">Nomor anggota <span class="mono"><?= e($akun['no_anggota']) ?></span> · anggota sejak <?= tgl($akun['dibuat'], true) ?></p>
     <div class="account__forms">
-      <form class="form panel" method="post" novalidate>
+      <form class="form panel" method="post" enctype="multipart/form-data" novalidate>
         <?= csrf_field() ?>
         <h3 class="panel__title">Data diri</h3>
         <?= keterangan_wajib() ?>
+        <div class="field">
+          <label for="foto">Foto profil <?= opsional() ?></label>
+          <div class="foto-input">
+            <?= avatar($akun, 'md') ?>
+            <div>
+              <input id="foto" name="foto" type="file" accept="image/jpeg,image/png,image/webp" class="file"<?= $inv('foto') ?>>
+              <?= $err('foto') ?>
+              <?php if ($akun['foto']): ?><label class="check"><input type="checkbox" name="hapus_foto" value="1"> Hapus foto</label><?php endif ?>
+            </div>
+          </div>
+        </div>
         <div class="field"><label for="nama">Nama lengkap <?= wajib() ?></label><input id="nama" name="nama" value="<?= e($profil['nama']) ?>" autocomplete="name" required<?= $inv('nama') ?>><?= $err('nama') ?></div>
         <div class="field"><label for="email">Email <?= wajib() ?></label><input id="email" name="email" type="email" value="<?= e($profil['email']) ?>" autocomplete="email" required<?= $inv('email') ?>><?= $err('email') ?></div>
+        <div class="field"><label for="username">Username <?= opsional() ?></label><input id="username" name="username" value="<?= e($profil['username']) ?>" maxlength="21" autocomplete="off"<?= $inv('username') ?>>
+          <?= $err('username') ?: '<p class="field__hint">Bebas, 3–20 karakter. Bisa dipakai untuk masuk.</p>' ?></div>
         <div class="field"><label for="telepon">No. WhatsApp <?= opsional() ?></label><input id="telepon" name="telepon" type="tel" value="<?= e($profil['telepon']) ?>" autocomplete="tel"<?= $inv('telepon') ?>><?= $err('telepon') ?></div>
         <button class="btn" name="profil" value="1">Simpan profil</button>
       </form>

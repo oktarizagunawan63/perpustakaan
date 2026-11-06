@@ -35,12 +35,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $cari = trim($_GET['q'] ?? '');
-$args = $cari !== '' ? array_fill(0, 3, "%$cari%") : [];
+$args = $cari !== '' ? array_fill(0, 4, "%$cari%") : [];
 $daftar = q('SELECT u.*,
                (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL) aktif_pinjam,
                (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL AND p.tgl_ajuan IS NULL AND p.format = "fisik" AND p.jatuh_tempo < CURDATE()) telat
              FROM users u WHERE u.role = "anggota" '
-    . ($cari !== '' ? 'AND (u.nama LIKE ? OR u.email LIKE ? OR u.no_anggota LIKE ?) ' : '') . 'ORDER BY u.nama', $args)->fetchAll();
+    . ($cari !== '' ? 'AND (u.nama LIKE ? OR u.email LIKE ? OR u.no_anggota LIKE ? OR u.username LIKE ?) ' : '') . 'ORDER BY u.nama', $args)->fetchAll();
 
 $err = fn(string $f) => isset($galat[$f]) ? '<p class="field__error">' . e($galat[$f]) . '</p>' : '';
 $inv = fn(string $f) => isset($galat[$f]) ? ' aria-invalid="true"' : '';
@@ -61,7 +61,7 @@ require __DIR__ . '/../partials/header.php';
     <section class="panel circ__list">
       <form class="search search--sm panel__search" role="search">
         <label class="sr-only" for="q">Cari anggota</label>
-        <input id="q" name="q" type="search" value="<?= e($cari) ?>" placeholder="Nama, email, nomor anggota">
+        <input id="q" name="q" type="search" value="<?= e($cari) ?>" placeholder="Nama, email, username, nomor">
         <button class="btn btn--sm btn--ghost">Cari</button>
       </form>
       <div class="table-wrap">
@@ -70,11 +70,11 @@ require __DIR__ . '/../partials/header.php';
           <tbody>
           <?php foreach ($daftar as $a): ?>
             <tr class="<?= $a['aktif'] ? '' : 'is-muted' ?>">
-              <td><?= e($a['nama']) ?><span class="sub mono"><?= e($a['no_anggota']) ?></span></td>
+              <td><div class="person"><?= avatar($a, 'md') ?><div><?= e($a['nama']) ?><span class="sub mono"><?= e($a['no_anggota']) ?></span><?php if ($a['username']): ?><span class="sub">@<?= e($a['username']) ?></span><?php endif ?></div></div></td>
               <td><?= e($a['email']) ?><span class="sub"><?= e($a['telepon'] ?? '—') ?></span></td>
               <td class="num" data-label="Pinjam"><?= (int) $a['aktif_pinjam'] ?: '—' ?><?= $a['telat'] ? ' <span class="tag tag--late">' . (int) $a['telat'] . ' telat</span>' : '' ?></td>
               <td><?= $a['aktif'] ? '<span class="tag tag--accent">Aktif</span>' : '<span class="tag">Nonaktif</span>' ?></td>
-              <td class="actions">
+              <td class="actions actions--stack">
                 <form method="post" data-confirm="Reset kata sandi <?= e($a['nama']) ?>? Kata sandi lamanya tidak berlaku lagi.">
                   <?= csrf_field() ?>
                   <button class="btn btn--sm btn--ghost" name="reset_sandi" value="<?= $a['id'] ?>">Reset sandi</button>

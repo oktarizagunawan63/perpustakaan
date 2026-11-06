@@ -20,6 +20,8 @@ CREATE TABLE users (
   no_anggota VARCHAR(20) NOT NULL UNIQUE,
   nama VARCHAR(100) NOT NULL,
   email VARCHAR(120) NOT NULL UNIQUE,
+  username VARCHAR(20) NULL UNIQUE,                  -- bebas dipilih anggota, bisa dipakai masuk
+  foto VARCHAR(40) NULL,                             -- nama file di assets/foto/
   telepon VARCHAR(20) NULL,
   password VARCHAR(255) NOT NULL,
   role ENUM('admin','anggota') NOT NULL DEFAULT 'anggota',

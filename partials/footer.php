@@ -5,8 +5,7 @@
   <div class="wrap footer__in">
     <div>
       <div class="footer__brand"><?= logo() ?><p class="footer__name">Perpustakaan</p></div>
-      <p>Gedung Perpustakaan Lt. 1–3<br>Jl. Kampus Raya No. 1</p>
-      <p><a href="mailto:layanan@perpus.test">layanan@perpus.test</a></p>
+      <p>Cari, pinjam, dan baca koleksi perpustakaan secara online.</p>
     </div>
     <div>
       <p class="footer__label">Aturan singkat</p>

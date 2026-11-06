@@ -67,7 +67,10 @@ $aktif = q('SELECT p.*, b.judul, b.penulis, b.no_panggil, b.rak, b.sampul, b.fil
             WHERE p.user_id = ? AND p.tgl_kembali IS NULL ORDER BY p.tgl_ambil IS NOT NULL, p.tgl_ajuan IS NOT NULL, p.jatuh_tempo', [$u['id']])->fetchAll();
 $riwayat = q('SELECT p.*, b.judul, b.penulis FROM peminjaman p JOIN buku b ON b.id = p.buku_id
               WHERE p.user_id = ? AND p.tgl_kembali IS NOT NULL ORDER BY p.tgl_kembali DESC LIMIT 30', [$u['id']])->fetchAll();
-$tagihan = array_values(array_filter($riwayat, fn($r) => $r['denda'] + $r['denda_kondisi'] > 0 && !$r['denda_lunas']));
+// Tagihan diambil terpisah supaya denda lama di luar batas riwayat tetap terlihat rinciannya
+$tagihan = q('SELECT p.*, b.judul FROM peminjaman p JOIN buku b ON b.id = p.buku_id
+              WHERE p.user_id = ? AND p.tgl_kembali IS NOT NULL AND p.denda_lunas IS NULL AND p.denda + p.denda_kondisi > 0
+              ORDER BY p.tgl_kembali DESC, p.id DESC', [$u['id']])->fetchAll();
 $totalTagihan = denda_belum_lunas((int) $u['id']);
 $antrean = q('SELECT a.*, b.judul, b.penulis, b.sampul, b.no_panggil, ' . SQL_POSISI_ANTREAN . ' AS posisi
               FROM antrean a JOIN buku b ON b.id = a.buku_id WHERE a.user_id = ? ORDER BY a.tgl_tersedia IS NULL, a.dibuat', [$u['id']])->fetchAll();

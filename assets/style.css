@@ -652,6 +652,23 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 .reject__form select, .reject__form input { width: 100%; min-height: 2.2rem; padding: .25rem .6rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font: inherit; font-size: .85rem; color: var(--ink); max-width: 100%; }
 .reject__form .btn { margin-top: .25rem; }
 
+/* Foto profil */
+.avatar { display: inline-grid; place-items: center; flex: none; border-radius: 50%; object-fit: cover; background: var(--green-100); color: var(--green-800); font-weight: 700; }
+.avatar--sm { width: 1.75rem; height: 1.75rem; font-size: .75rem; }
+.avatar--md { width: 3rem; height: 3rem; font-size: 1.1rem; }
+.avatar--lg { width: 4.5rem; height: 4.5rem; font-size: 1.8rem; }
+.nav .nav__akun { display: inline-flex; align-items: center; gap: .45rem; }
+.account__hello { display: flex; align-items: center; gap: 1rem; margin-bottom: .5rem; }
+.account__hello h1 { margin: 0; }
+.member-card__name small { display: block; margin-top: .1rem; font-size: .8rem; font-weight: 500; opacity: .75; }
+.foto-input { display: flex; align-items: flex-start; gap: 1rem; margin-top: .5rem; }
+.foto-input > div { min-width: 0; }
+.field .foto-input .check { display: flex; margin: .5rem 0 0; font-size: .82rem; color: var(--ink-2); }
+.field .foto-input .check input { width: auto; height: auto; padding: 0; }
+.person { display: flex; align-items: center; gap: .7rem; }
+.table .actions--stack form { display: block; margin: 0 0 .35rem; }
+.table .actions--stack .btn { width: 100%; }
+
 /* Panduan tambahan di beranda */
 .how-extra { display: grid; gap: 1.25rem; margin-top: 1.25rem; }
 @media (min-width: 860px) { .how-extra { grid-template-columns: 1fr 1fr; } }
@@ -672,5 +689,7 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
   .table--stack .return-form { display: flex !important; flex-flow: row wrap; align-items: center; margin-right: 0; }
   .table--stack tbody tr:hover td { background: none; }
   .table--stack .koleksi__judul { display: flex; }
+  .table .table--stack .actions--stack form { display: inline-block; margin: 0 .4rem .4rem 0; }
+  .table .table--stack .actions--stack .btn { width: auto; }
   .table--stack .row-form__kode { flex-basis: 100% !important; }
 }

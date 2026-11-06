@@ -11,13 +11,13 @@ $kosong = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_cek();
     $email = trim($_POST['email'] ?? '');
-    if ($email === '') $kosong['email'] = 'Email wajib diisi.';
+    if ($email === '') $kosong['email'] = 'Email atau username wajib diisi.';
     if (($_POST['password'] ?? '') === '') $kosong['password'] = 'Kata sandi wajib diisi.';
-    $akun = $kosong ? null : q('SELECT * FROM users WHERE email = ?', [$email])->fetch();
+    $akun = $kosong ? null : q('SELECT * FROM users WHERE email = ? OR username = ?', [$email, ltrim($email, '@')])->fetch();
     if ($kosong) {
         // Pesan per isian ditampilkan di bawah tiap kolom
     } elseif (!$akun || !password_verify($_POST['password'] ?? '', $akun['password'])) {
-        $galat = 'Email atau kata sandi tidak cocok.';
+        $galat = 'Email, username, atau kata sandi tidak cocok.';
     } elseif (!$akun['aktif']) {
         $galat = 'Akun ini sedang dinonaktifkan. Hubungi petugas di meja sirkulasi.';
     } else {
@@ -52,8 +52,8 @@ require __DIR__ . '/partials/header.php';
     <?= keterangan_wajib() ?>
 
     <div class="field">
-      <label for="email">Email <?= wajib() ?></label>
-      <input id="email" name="email" type="email" value="<?= e($email) ?>" autocomplete="username" required autofocus<?= $inv('email') ?>>
+      <label for="email">Email atau username <?= wajib() ?></label>
+      <input id="email" name="email" value="<?= e($email) ?>" autocomplete="username" required autofocus<?= $inv('email') ?>>
       <?= $err('email') ?>
     </div>
     <div class="field">

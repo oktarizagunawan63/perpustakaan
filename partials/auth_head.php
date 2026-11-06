@@ -2,7 +2,7 @@
 <aside class="auth__splash" aria-hidden="true">
   <?= logo('auth__splash-logo') ?>
   <p class="auth__splash-name">Perpustakaan</p>
-  <p class="auth__splash-tag">Ribuan judul, satu kartu anggota.</p>
+  <p class="auth__splash-tag">Satu kartu anggota untuk semua koleksi.</p>
   <a class="btn btn--light" href="<?= url('katalog.php') ?>" tabindex="-1">Lihat katalog</a>
 </aside>
 

@@ -3,7 +3,7 @@ require __DIR__ . '/config.php';
 
 if (user()) redirect('akun.php');
 
-$in = ['nama' => '', 'email' => '', 'telepon' => ''];
+$in = ['nama' => '', 'email' => '', 'username' => '', 'telepon' => ''];
 $galat = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_cek();
@@ -44,6 +44,11 @@ require __DIR__ . '/partials/header.php';
       <label for="email">Email <?= wajib() ?></label>
       <input id="email" name="email" type="email" value="<?= e($in['email']) ?>" autocomplete="email" required<?= $aria('email') ?>>
       <?= $err('email') ?>
+    </div>
+    <div class="field">
+      <label for="username">Username <?= opsional() ?></label>
+      <input id="username" name="username" value="<?= e($in['username']) ?>" maxlength="21" autocomplete="off"<?= $aria('username') ?>>
+      <?= $err('username') ?: '<p class="field__hint">Bebas, 3–20 karakter. Bisa dipakai untuk masuk.</p>' ?>
     </div>
     <div class="field">
       <label for="telepon">No. WhatsApp <?= opsional() ?></label>

@@ -53,6 +53,7 @@ $serupa = q('SELECT id, judul, penulis, no_panggil, sampul FROM buku WHERE kateg
 
 $judul = $b['judul'];
 $menu = 'katalog';
+$live = true;
 require __DIR__ . '/partials/header.php';
 ?>
 

@@ -7,8 +7,31 @@ $in = ['nama' => '', 'email' => '', 'telepon' => ''];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_cek();
+    if (isset($_POST['hapus'])) {
+        $a = q('SELECT id, nama, foto FROM users WHERE id = ? AND role = "anggota" AND dihapus IS NULL', [(int) $_POST['hapus']])->fetch();
+        if ($a) {
+            $berjalan = (int) q('SELECT COUNT(*) FROM peminjaman WHERE user_id = ? AND tgl_kembali IS NULL', [$a['id']])->fetchColumn();
+            $tunggakan = denda_belum_lunas((int) $a['id']);
+            if ($berjalan) {
+                flash('error', $a['nama'] . ' masih punya ' . $berjalan . ' pinjaman atau permintaan berjalan. Selesaikan dulu sebelum menghapus.');
+            } elseif ($tunggakan) {
+                flash('error', $a['nama'] . ' masih punya denda ' . rupiah($tunggakan) . ' yang belum lunas. Lunasi dulu sebelum menghapus.');
+            } else {
+                db()->beginTransaction();
+                foreach (['antrean', 'favorit', 'pemberitahuan'] as $tabel) q("DELETE FROM $tabel WHERE user_id = ?", [$a['id']]);
+                // Nama tetap ada untuk riwayat; data kontak dan kunci masuk dibuang, email jadi bisa dipakai daftar lagi
+                q('UPDATE users SET aktif = 0, dihapus = NOW(), email = ?, username = NULL, telepon = NULL, foto = NULL, password = ? WHERE id = ?',
+                    ['dihapus-' . $a['id'] . '@perpus.invalid', password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT), $a['id']]);
+                db()->commit();
+                if ($a['foto'] && is_file(DIR_FOTO . $a['foto'])) unlink(DIR_FOTO . $a['foto']);
+                flash('ok', $a['nama'] . ' dihapus dari daftar anggota. Riwayat pinjamnya tetap tersimpan di laporan.');
+            }
+        }
+        redirect('admin/anggota.php');
+    }
+
     if (isset($_POST['status'])) {
-        $a = q('SELECT nama, aktif FROM users WHERE id = ? AND role = "anggota"', [(int) $_POST['status']])->fetch();
+        $a = q('SELECT nama, aktif FROM users WHERE id = ? AND role = "anggota" AND dihapus IS NULL', [(int) $_POST['status']])->fetch();
         if ($a) {
             q('UPDATE users SET aktif = 1 - aktif WHERE id = ?', [(int) $_POST['status']]);
             flash('ok', $a['nama'] . ($a['aktif'] ? ' dinonaktifkan — tidak bisa masuk atau meminjam.' : ' diaktifkan kembali.'));
@@ -17,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (isset($_POST['reset_sandi'])) {
-        $a = q('SELECT nama FROM users WHERE id = ? AND role = "anggota"', [(int) $_POST['reset_sandi']])->fetch();
+        $a = q('SELECT nama FROM users WHERE id = ? AND role = "anggota" AND dihapus IS NULL', [(int) $_POST['reset_sandi']])->fetch();
         if ($a) {
             $sementara = bin2hex(random_bytes(4));
             q('UPDATE users SET password = ? WHERE id = ?', [password_hash($sementara, PASSWORD_DEFAULT), (int) $_POST['reset_sandi']]);
@@ -39,7 +62,7 @@ $args = $cari !== '' ? array_fill(0, 4, "%$cari%") : [];
 $daftar = q('SELECT u.*,
                (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL) aktif_pinjam,
                (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL AND p.tgl_ajuan IS NULL AND p.format = "fisik" AND p.jatuh_tempo < CURDATE()) telat
-             FROM users u WHERE u.role = "anggota" '
+             FROM users u WHERE u.role = "anggota" AND u.dihapus IS NULL '
     . ($cari !== '' ? 'AND (u.nama LIKE ? OR u.email LIKE ? OR u.no_anggota LIKE ? OR u.username LIKE ?) ' : '') . 'ORDER BY u.nama', $args)->fetchAll();
 
 $err = fn(string $f) => isset($galat[$f]) ? '<p class="field__error">' . e($galat[$f]) . '</p>' : '';
@@ -82,6 +105,10 @@ require __DIR__ . '/../partials/header.php';
                 <form method="post"<?= $a['aktif'] ? ' data-confirm="Nonaktifkan ' . e($a['nama']) . '? Anggota tidak bisa masuk atau meminjam sampai diaktifkan lagi."' : '' ?>>
                   <?= csrf_field() ?>
                   <button class="btn btn--sm btn--ghost" name="status" value="<?= $a['id'] ?>"><?= $a['aktif'] ? 'Nonaktifkan' : 'Aktifkan' ?></button>
+                </form>
+                <form method="post" data-confirm="Hapus <?= e($a['nama']) ?>? Akunnya tidak bisa dipakai lagi. Riwayat pinjamnya tetap tersimpan untuk laporan.">
+                  <?= csrf_field() ?>
+                  <button class="btn btn--sm btn--ghost btn--hapus" name="hapus" value="<?= $a['id'] ?>">Hapus</button>
                 </form>
               </td>
             </tr>

@@ -26,6 +26,7 @@ CREATE TABLE users (
   password VARCHAR(255) NOT NULL,
   role ENUM('admin','anggota') NOT NULL DEFAULT 'anggota',
   aktif TINYINT(1) NOT NULL DEFAULT 1,
+  dihapus DATETIME NULL,                             -- akun ditutup petugas; baris tetap ada supaya riwayat dan laporan utuh
   dibuat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 

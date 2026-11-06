@@ -20,6 +20,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-confirm-btn]').forEach(b =>
     b.addEventListener('click', e => { if (!confirm(b.dataset.confirmBtn)) e.preventDefault(); }));
 
+  // Kembali ke halaman sebelumnya; bila asalnya halaman masuk atau halaman yang sama, ikuti tautan bawaan
+  document.querySelector('[data-back]')?.addEventListener('click', e => {
+    const dari = document.referrer;
+    if (dari.startsWith(location.origin) && dari !== location.href && !/(login|daftar|logout)\.php/.test(dari)) {
+      e.preventDefault();
+      history.back();
+    }
+  });
+
   document.querySelectorAll('[data-print]').forEach(b =>
     b.addEventListener('click', () => print()));
 
@@ -55,17 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => { jam.textContent = format.format(Date.now() + selisih) + ' WIB'; }, 1000);
   }
 
-  // Pratinjau foto profil sebelum disimpan
+  // Foto profil tersimpan begitu dipilih
   document.querySelectorAll('.foto-input input[type=file]').forEach(input =>
-    input.addEventListener('change', () => {
-      const file = input.files[0];
-      if (!file || !file.type.startsWith('image/')) return;
-      const img = document.createElement('img');
-      img.className = 'avatar avatar--md';
-      img.alt = '';
-      img.src = URL.createObjectURL(file);
-      input.closest('.foto-input').firstElementChild.replaceWith(img);
-    }));
+    input.addEventListener('change', () => { if (input.files[0]) input.form.submit(); }));
 
   // Pratinjau sampul sebelum disimpan
   document.querySelectorAll('.cover-input input[type=file]').forEach(input =>

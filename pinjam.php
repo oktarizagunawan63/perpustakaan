@@ -50,6 +50,7 @@ $pilihanFormat = [
 
 $judul = 'Pinjam ' . $b['judul'];
 $menu = 'katalog';
+$live = true;
 require __DIR__ . '/partials/header.php';
 ?>
 

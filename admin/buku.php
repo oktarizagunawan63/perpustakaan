@@ -164,6 +164,7 @@ $opsionalTerisi = $id || array_filter(array_intersect_key($b, array_flip(['penul
 $judul = $modeForm ? ($id ? 'Ubah buku' : 'Tambah buku') : 'Koleksi';
 $admin = true;
 $menu = 'buku';
+$live = !$modeForm;
 require __DIR__ . '/../partials/header.php';
 ?>
 
@@ -290,7 +291,7 @@ require __DIR__ . '/../partials/header.php';
     </form>
     <div class="table-wrap">
       <table class="table table--stack">
-        <thead><tr><th>Judul</th><th>Tersedia sebagai</th><th class="num">Dipinjam fisik</th><th>Stok fisik</th><th></th></tr></thead>
+        <thead><tr><th>Judul</th><th>Tersedia sebagai</th><th class="num">Dipinjam fisik</th><th class="num">Sisa fisik</th><th>Stok total</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($daftar as $r): ?>
           <tr>
@@ -304,6 +305,7 @@ require __DIR__ . '/../partials/header.php';
               <?php if ($r['stok'] > 0): ?><span class="tag">Fisik</span><?php endif ?>
             </td>
             <td class="num" data-label="Dipinjam"><?= (int) $r['dipinjam'] ?: '—' ?></td>
+            <td class="num" data-label="Sisa"><?= max(0, (int) $r['stok'] - (int) $r['dipinjam']) ?></td>
             <td>
               <form method="post" class="stock-form">
                 <?= csrf_field() ?>
@@ -316,7 +318,7 @@ require __DIR__ . '/../partials/header.php';
             <td class="actions"><a class="btn btn--sm btn--ghost" href="<?= url('admin/buku.php?id=' . $r['id']) ?>">Ubah</a></td>
           </tr>
         <?php endforeach ?>
-        <?php if (!$daftar): ?><tr><td colspan="5" class="muted">Tidak ada judul yang cocok.</td></tr><?php endif ?>
+        <?php if (!$daftar): ?><tr><td colspan="6" class="muted">Tidak ada judul yang cocok.</td></tr><?php endif ?>
         </tbody>
       </table>
     </div>

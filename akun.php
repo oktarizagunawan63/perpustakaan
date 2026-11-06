@@ -30,20 +30,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if (isset($_POST['ganti_foto'])) {
+        [$fotoBaru, $galatFoto] = simpan_foto($_FILES['foto'] ?? ['error' => UPLOAD_ERR_NO_FILE]);
+        if ($galatFoto) {
+            $galat['foto'] = $galatFoto;
+        } elseif ($fotoBaru) {
+            $fotoLama = q('SELECT foto FROM users WHERE id = ?', [$u['id']])->fetchColumn();
+            q('UPDATE users SET foto = ? WHERE id = ?', [$fotoBaru, $u['id']]);
+            if ($fotoLama && is_file(DIR_FOTO . $fotoLama)) unlink(DIR_FOTO . $fotoLama);
+            $_SESSION['user']['foto'] = $fotoBaru;
+            flash('ok', 'Foto profil diperbarui.');
+            redirect('akun.php');
+        }
+    }
+
+    if (isset($_POST['hapus_foto'])) {
+        $fotoLama = q('SELECT foto FROM users WHERE id = ?', [$u['id']])->fetchColumn();
+        q('UPDATE users SET foto = NULL WHERE id = ?', [$u['id']]);
+        if ($fotoLama && is_file(DIR_FOTO . $fotoLama)) unlink(DIR_FOTO . $fotoLama);
+        $_SESSION['user']['foto'] = null;
+        flash('ok', 'Foto profil dihapus.');
+        redirect('akun.php#profil');
+    }
+
     if (isset($_POST['profil'])) {
         [$masukan, $galat] = validasi_anggota($_POST, (int) $u['id']);
-        // Foto baru disimpan hanya bila isian lain sudah benar, supaya tidak ada file yatim
         if (!$galat) {
-            [$fotoBaru, $galatFoto] = simpan_foto($_FILES['foto'] ?? ['error' => UPLOAD_ERR_NO_FILE]);
-            if ($galatFoto) $galat['foto'] = $galatFoto;
-        }
-        if (!$galat) {
-            $fotoLama = q('SELECT foto FROM users WHERE id = ?', [$u['id']])->fetchColumn() ?: null;
-            $foto = $fotoBaru ?? (isset($_POST['hapus_foto']) ? null : $fotoLama);
-            q('UPDATE users SET nama = ?, email = ?, username = ?, telepon = ?, foto = ? WHERE id = ?',
-                [$masukan['nama'], $masukan['email'], $masukan['username'] ?: null, $masukan['telepon'] ?: null, $foto, $u['id']]);
-            if ($fotoLama && $fotoLama !== $foto && is_file(DIR_FOTO . $fotoLama)) unlink(DIR_FOTO . $fotoLama);
-            $_SESSION['user'] = array_merge($u, $masukan, ['foto' => $foto]);
+            q('UPDATE users SET nama = ?, email = ?, username = ?, telepon = ? WHERE id = ?',
+                [$masukan['nama'], $masukan['email'], $masukan['username'] ?: null, $masukan['telepon'] ?: null, $u['id']]);
+            $_SESSION['user'] = array_merge($u, $masukan);
             flash('ok', 'Profil diperbarui.');
             redirect('akun.php#profil');
         }
@@ -190,8 +205,11 @@ require __DIR__ . '/partials/header.php';
   <section class="section section--tight" id="profil">
     <h2>Profil &amp; kata sandi</h2>
     <p class="muted">Nomor anggota <span class="mono"><?= e($akun['no_anggota']) ?></span> · anggota sejak <?= tgl($akun['dibuat'], true) ?></p>
+    <?php // Form foto terpisah: tersimpan begitu dipilih, dan Enter di kolom profil tidak ikut menghapus foto ?>
+    <form id="form-foto" method="post" enctype="multipart/form-data" hidden><?= csrf_field() ?><input type="hidden" name="ganti_foto" value="1"></form>
+    <?php if ($akun['foto']): ?><form id="form-hapus-foto" method="post" hidden><?= csrf_field() ?></form><?php endif ?>
     <div class="account__forms">
-      <form class="form panel" method="post" enctype="multipart/form-data" novalidate>
+      <form class="form panel" method="post" novalidate>
         <?= csrf_field() ?>
         <h3 class="panel__title">Data diri</h3>
         <?= keterangan_wajib() ?>
@@ -200,9 +218,10 @@ require __DIR__ . '/partials/header.php';
           <div class="foto-input">
             <?= avatar($akun, 'md') ?>
             <div>
-              <input id="foto" name="foto" type="file" accept="image/jpeg,image/png,image/webp" class="file"<?= $inv('foto') ?>>
+              <input id="foto" name="foto" type="file" form="form-foto" accept="image/jpeg,image/png,image/webp" class="file"<?= $inv('foto') ?>>
+              <noscript><button class="btn btn--sm btn--ghost" form="form-foto">Unggah foto</button></noscript>
               <?= $err('foto') ?>
-              <?php if ($akun['foto']): ?><label class="check"><input type="checkbox" name="hapus_foto" value="1"> Hapus foto</label><?php endif ?>
+              <?php if ($akun['foto']): ?><button class="btn btn--sm btn--ghost" form="form-hapus-foto" name="hapus_foto" value="1" data-confirm-btn="Hapus foto profil?">Hapus foto</button><?php endif ?>
             </div>
           </div>
         </div>

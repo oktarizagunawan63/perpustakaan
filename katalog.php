@@ -48,6 +48,7 @@ $linkHal = fn(int $n) => url('katalog.php?' . http_build_query(array_filter(['q'
 
 $judul = $cari !== '' ? "Cari “{$cari}”" : 'Katalog';
 $menu = 'katalog';
+$live = true;
 require __DIR__ . '/partials/header.php';
 ?>
 

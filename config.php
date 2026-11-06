@@ -411,7 +411,7 @@ function catat_pinjaman(array $agt, int $bukuId, int $hari, string $format, bool
     }
 }
 
-/** Sidik data yang tampil di dasbor: berubah saat ada aksi baru, dipakai halaman untuk memperbarui diri. Anggota hanya memantau datanya sendiri. */
+/** Sidik data yang tampil di dasbor: berubah saat ada aksi baru, dipakai halaman untuk memperbarui diri. Anggota memantau datanya sendiri dan sisa stok fisik. */
 function versi_data(array $u): string
 {
     $milik = $u['role'] === 'admin' ? [] : [$u['id']];
@@ -419,6 +419,7 @@ function versi_data(array $u): string
     return md5(json_encode([
         q("SELECT COUNT(*), COALESCE(MAX(id), 0), COUNT(tgl_setuju), COUNT(tgl_ambil), COUNT(tgl_ajuan), COUNT(tgl_kembali), COUNT(denda_lunas), COALESCE(SUM(perpanjang), 0) FROM peminjaman $saring", $milik)->fetch(PDO::FETCH_NUM),
         q("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(CRC32(CONCAT(status, COALESCE(catatan, '')))), 0) FROM usulan $saring", $milik)->fetch(PDO::FETCH_NUM),
+        q('SELECT COUNT(*), COALESCE(MAX(id), 0), COUNT(tgl_kembali) FROM peminjaman WHERE format = "fisik"')->fetch(PDO::FETCH_NUM),
         q('SELECT COUNT(*), COALESCE(MAX(id), 0), COUNT(tgl_tersedia) FROM antrean')->fetch(PDO::FETCH_NUM),
         q('SELECT COUNT(*), COALESCE(SUM(stok), 0) FROM buku')->fetch(PDO::FETCH_NUM),
         q('SELECT COUNT(*), SUM(aktif) FROM users')->fetch(PDO::FETCH_NUM),

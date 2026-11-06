@@ -35,6 +35,12 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
 
 <header class="topbar">
   <div class="wrap topbar__in">
+    <?php if (basename($_SERVER['SCRIPT_NAME']) !== 'index.php'): ?>
+      <a class="back" href="<?= url($admin ? 'admin/index.php' : 'index.php') ?>" data-back aria-label="Kembali ke halaman sebelumnya">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <span>Kembali</span>
+      </a>
+    <?php endif ?>
     <a class="brand" href="<?= url('index.php') ?>">
       <?= logo('brand__mark') ?>
       <span class="brand__text">Perpustakaan<small>Kampus</small></span>

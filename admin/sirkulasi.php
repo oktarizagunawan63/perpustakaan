@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Peminjaman baru. Nilai input buku = "Judul — Penulis" dari datalist.
     $noAnggota = strtoupper(trim(explode(' ', trim($_POST['anggota'] ?? ''))[0]));
-    $agt = q('SELECT * FROM users WHERE no_anggota = ? AND role = "anggota"', [$noAnggota])->fetch();
+    $agt = q('SELECT * FROM users WHERE no_anggota = ? AND role = "anggota" AND dihapus IS NULL', [$noAnggota])->fetch();
     $buku = q('SELECT id FROM buku WHERE CONCAT(judul, " — ", penulis) = ? LIMIT 1', [trim($_POST['buku'] ?? '')])->fetch();
     [$ok, $pesan] = match (true) {
         $noAnggota === '' => [false, 'Anggota wajib diisi. Ketik nama atau nomor anggota, lalu pilih dari daftar saran.'],

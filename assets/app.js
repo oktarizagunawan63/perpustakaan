@@ -32,6 +32,29 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch { b.textContent = 'Gagal menyalin'; }
     }));
 
+  // Dasbor memperbarui diri saat data berubah, kecuali sedang ada isian yang belum dikirim
+  const { live, versi } = document.body.dataset;
+  const adaIsian = () => document.querySelector('details.reject[open]') || [...document.querySelectorAll('input, textarea, select')].some(el => {
+    if (el.tagName === 'SELECT') return el.selectedIndex !== Math.max([...el.options].findIndex(o => o.defaultSelected), 0);
+    if (['checkbox', 'radio'].includes(el.type)) return el.checked !== el.defaultChecked;
+    return el.value !== el.defaultValue;
+  });
+  if (live) setInterval(async () => {
+    if (document.hidden) return;
+    try {
+      const res = await fetch(live, { cache: 'no-store' });
+      if (res.ok && (await res.json()).versi !== versi && !adaIsian()) location.reload();
+    } catch { /* server sedang mati: coba lagi di putaran berikutnya */ }
+  }, 3000);
+
+  // Jam di Laporan mengikuti waktu server, bukan jam perangkat
+  const jam = document.querySelector('[data-jam]');
+  if (jam) {
+    const selisih = jam.dataset.jam - Date.now();
+    const format = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'medium', timeZone: 'Asia/Jakarta' });
+    setInterval(() => { jam.textContent = format.format(Date.now() + selisih) + ' WIB'; }, 1000);
+  }
+
   // Pratinjau sampul sebelum disimpan
   document.querySelectorAll('.cover-input input[type=file]').forEach(input =>
     input.addEventListener('change', () => {

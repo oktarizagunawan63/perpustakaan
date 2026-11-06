@@ -43,9 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $anggota = $u && $u['role'] === 'anggota';
 $tersimpan = $anggota && q('SELECT 1 FROM favorit WHERE user_id = ? AND buku_id = ?', [$u['id'], $b['id']])->fetch();
-$antreSaya = $anggota ? q('SELECT a.tgl_tersedia, (SELECT COUNT(*) FROM antrean x WHERE x.buku_id = a.buku_id AND x.tgl_tersedia IS NULL
-                             AND (x.dibuat < a.dibuat OR (x.dibuat = a.dibuat AND x.id < a.id))) + 1 AS posisi
-                           FROM antrean a WHERE a.user_id = ? AND a.buku_id = ?', [$u['id'], $b['id']])->fetch() : null;
+$antreSaya = $anggota ? q('SELECT a.tgl_tersedia, ' . SQL_POSISI_ANTREAN . ' AS posisi FROM antrean a WHERE a.user_id = ? AND a.buku_id = ?', [$u['id'], $b['id']])->fetch() : null;
 $giliran = $antreSaya && $antreSaya['tgl_tersedia'];
 $kembaliTerdekat = $b['tersedia'] <= 0 ? q('SELECT MIN(jatuh_tempo) FROM peminjaman WHERE buku_id = ? AND format = "fisik" AND tgl_kembali IS NULL', [$b['id']])->fetchColumn() : null;
 $bisaPinjam = $b['tersedia'] > 0 || $b['file_pdf'] || $giliran;
@@ -85,7 +83,7 @@ require __DIR__ . '/partials/header.php';
         <?php else: ?>
           <p class="locator__status">
             <?php if ($giliran): ?>
-              <span class="avail avail--yes">Giliranmu! Buku fisik disimpan sampai <?= tgl(date('Y-m-d', strtotime($antreSaya['tgl_tersedia'] . ' +' . BATAS_GILIRAN . ' days'))) ?></span>
+              <span class="avail avail--yes">Giliranmu! Buku fisik disimpan sampai <?= tgl(batas_giliran($antreSaya['tgl_tersedia'])) ?></span>
             <?php elseif ($b['tersedia'] > 0): ?>
               <span class="avail avail--yes">Buku fisik: <?= (int) $b['tersedia'] ?> dari <?= (int) $b['stok'] ?> tersedia</span>
             <?php elseif ($b['stok'] > 0): ?>

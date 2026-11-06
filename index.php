@@ -93,13 +93,23 @@ require __DIR__ . '/partials/header.php';
       </li>
       <li>
         <h3>Klik “Pinjam buku ini”</h3>
-        <p>Pilih <strong>e-book</strong> (langsung dibaca di website) atau <strong>buku fisik</strong> (diambil di meja sirkulasi paling lambat <?= BATAS_AMBIL ?> hari setelah dipesan), lalu lama pinjam <?= implode(', ', array_slice(PILIHAN_LAMA, 0, -1)) ?>, atau <?= max(PILIHAN_LAMA) ?> hari.</p>
+        <p>Pilih <strong>e-book</strong> (langsung dibaca di website) atau <strong>buku fisik</strong> (tunggu disetujui petugas, lalu ambil di meja sirkulasi paling lambat <?= BATAS_AMBIL ?> hari), lalu lama pinjam <?= implode(', ', array_slice(PILIHAN_LAMA, 0, -1)) ?>, atau <?= max(PILIHAN_LAMA) ?> hari.</p>
       </li>
       <li>
         <h3>Kembalikan tepat waktu</h3>
         <p>E-book berakhir otomatis. Buku fisik diserahkan ke meja sirkulasi lalu dicek petugas; telat didenda <?= rupiah(DENDA_PER_HARI) ?>/hari, rusak <?= rupiah(DENDA_KONDISI['rusak']) ?>, hilang <?= rupiah(DENDA_KONDISI['hilang']) ?>. Cek semuanya di <a href="<?= url('pinjaman.php') ?>">Pinjaman saya</a>.</p>
       </li>
     </ol>
+    <div class="how-extra">
+      <div>
+        <h3>Buku fisik sedang habis?</h3>
+        <p>Klik “Antre buku fisik” di halaman buku. Saat ada eksemplar kembali, giliranmu muncul di <a href="<?= url('pinjaman.php') ?>">Pinjaman saya</a> dan bukunya disimpan <?= BATAS_GILIRAN ?> hari. Kalau tidak dipakai, giliran pindah ke antrean berikutnya.</p>
+      </div>
+      <div>
+        <h3>Kena denda?</h3>
+        <p>Bayar di meja sirkulasi, lalu petugas menandainya lunas. Selama masih ada denda yang belum lunas, kamu belum bisa meminjam buku baru. Rinciannya ada di <a href="<?= url('pinjaman.php#tagihan') ?>">Pinjaman saya</a>.</p>
+      </div>
+    </div>
   </div>
 </section>
 

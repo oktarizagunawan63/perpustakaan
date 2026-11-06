@@ -2,7 +2,8 @@
 require __DIR__ . '/../config.php';
 wajib_admin();
 
-$galat = '';
+$galat = [];
+$galatBaris = '';
 $in = ['kode' => '', 'nama' => ''];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -21,22 +22,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $id = (int) ($_POST['simpan'] ?? 0);
     $d = ['kode' => trim($_POST['kode'] ?? ''), 'nama' => trim($_POST['nama'] ?? '')];
-    $galat = match (true) {
-        !preg_match('/^[0-9A-Za-z.\-]{1,10}$/', $d['kode']) => 'Kode 1–10 karakter: huruf, angka, titik, atau strip. Contoh: 615.7',
-        mb_strlen($d['nama']) < 3 || mb_strlen($d['nama']) > 80 => 'Nama kategori 3–80 karakter.',
-        (bool) q('SELECT 1 FROM kategori WHERE (kode = ? OR nama = ?) AND id <> ?', [$d['kode'], $d['nama'], $id])->fetch() => 'Kode atau nama itu sudah dipakai kategori lain.',
-        default => '',
-    };
+    if ($d['kode'] === '') $galat['kode'] = 'Kode wajib diisi.';
+    elseif (!preg_match('/^[0-9A-Za-z.\-]{1,10}$/', $d['kode'])) $galat['kode'] = 'Kode 1–10 karakter: huruf, angka, titik, atau strip. Contoh: 615.7';
+    elseif (q('SELECT 1 FROM kategori WHERE kode = ? AND id <> ?', [$d['kode'], $id])->fetch()) $galat['kode'] = 'Kode itu sudah dipakai kategori lain.';
+    if ($d['nama'] === '') $galat['nama'] = 'Nama kategori wajib diisi.';
+    elseif (mb_strlen($d['nama']) < 3 || mb_strlen($d['nama']) > 80) $galat['nama'] = 'Nama kategori 3–80 karakter.';
+    elseif (q('SELECT 1 FROM kategori WHERE nama = ? AND id <> ?', [$d['nama'], $id])->fetch()) $galat['nama'] = 'Nama itu sudah dipakai kategori lain.';
     if (!$galat) {
         if ($id) q('UPDATE kategori SET kode = ?, nama = ? WHERE id = ?', [$d['kode'], $d['nama'], $id]);
         else q('INSERT INTO kategori (kode, nama) VALUES (?, ?)', [$d['kode'], $d['nama']]);
         flash('ok', 'Kategori “' . $d['nama'] . '” disimpan.');
         redirect('admin/kategori.php');
     }
-    if (!$id) $in = $d;
+    // Baris tabel tidak punya tempat pesan, jadi galatnya tampil di atas tabel
+    if ($id) { $galatBaris = implode(' ', $galat); $galat = []; }
+    else $in = $d;
 }
 
 $daftar = q('SELECT k.*, COUNT(b.id) jumlah FROM kategori k LEFT JOIN buku b ON b.kategori_id = k.id GROUP BY k.id ORDER BY k.kode')->fetchAll();
+
+$err = fn(string $f) => isset($galat[$f]) ? '<p class="field__error">' . e($galat[$f]) . '</p>' : '';
+$inv = fn(string $f) => isset($galat[$f]) ? ' aria-invalid="true"' : '';
 
 $judul = 'Kategori';
 $admin = true;
@@ -49,12 +55,12 @@ require __DIR__ . '/../partials/header.php';
     <div><h1>Kategori</h1><p class="muted"><?= count($daftar) ?> kategori. Kategori baru langsung bisa dipilih di Koleksi, dan muncul di filter katalog setelah ada bukunya.</p></div>
   </div>
 
-  <?php if ($galat): ?><div class="notice notice--error" role="alert"><?= e($galat) ?></div><?php endif ?>
+  <?php if ($galatBaris): ?><div class="notice notice--error" role="alert"><?= e($galatBaris) ?></div><?php endif ?>
 
   <div class="circ circ--reverse">
     <section class="panel circ__list">
       <div class="table-wrap">
-        <table class="table">
+        <table class="table table--stack">
           <thead><tr><th>Kode &amp; nama</th><th class="num">Buku</th><th></th></tr></thead>
           <tbody>
           <?php foreach ($daftar as $k): ?>
@@ -69,7 +75,7 @@ require __DIR__ . '/../partials/header.php';
                   <button class="btn btn--sm btn--ghost" name="simpan" value="<?= $k['id'] ?>">Simpan</button>
                 </form>
               </td>
-              <td class="num"><a href="<?= url('katalog.php?kelas=' . rawurlencode($k['kode'])) ?>"><?= (int) $k['jumlah'] ?></a></td>
+              <td class="num" data-label="Buku"><a href="<?= url('katalog.php?kelas=' . rawurlencode($k['kode'])) ?>"><?= (int) $k['jumlah'] ?></a></td>
               <td class="actions">
                 <?php if ($k['jumlah']): ?>
                   <span class="muted small">Masih dipakai</span>
@@ -92,9 +98,10 @@ require __DIR__ . '/../partials/header.php';
       <h2 class="panel__title">Tambah kategori</h2>
       <form method="post" class="form" novalidate>
         <?= csrf_field() ?>
-        <div class="field"><label for="kode">Kode</label><input id="kode" name="kode" value="<?= e($in['kode']) ?>" maxlength="10" required>
-          <p class="field__hint">Kode klasifikasi, misalnya 615.7</p></div>
-        <div class="field"><label for="nama">Nama kategori</label><input id="nama" name="nama" value="<?= e($in['nama']) ?>" maxlength="80" required></div>
+        <?= keterangan_wajib() ?>
+        <div class="field"><label for="kode">Kode <?= wajib() ?></label><input id="kode" name="kode" value="<?= e($in['kode']) ?>" maxlength="10" required<?= $inv('kode') ?>>
+          <?= $err('kode') ?: '<p class="field__hint">Kode klasifikasi, misalnya 615.7</p>' ?></div>
+        <div class="field"><label for="nama">Nama kategori <?= wajib() ?></label><input id="nama" name="nama" value="<?= e($in['nama']) ?>" maxlength="80" required<?= $inv('nama') ?>><?= $err('nama') ?></div>
         <button class="btn btn--block" name="simpan" value="0">Tambah kategori</button>
       </form>
     </section>

@@ -456,6 +456,8 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 .field__hint { font-size: .78rem; color: var(--muted); margin: .4rem 0 0; }
 .field__error { font-size: .8rem; color: var(--late); margin: .4rem 0 0; font-weight: 500; }
 .opt { font-weight: 400; opacity: .8; }
+.req { color: var(--late); font-weight: 700; }
+.form__key { font-size: .78rem; color: var(--muted); margin: 0 0 1rem; }
 .field-row { display: grid; gap: 0 1.25rem; }
 @media (min-width: 560px) { .field-row { grid-template-columns: 1fr 1fr; } .auth .field-row { grid-template-columns: 1fr; } }
 @media (min-width: 760px) { .field-row--4 { grid-template-columns: repeat(4, 1fr); } }
@@ -610,6 +612,7 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 /* Pengingat, daftar baca, antrean, akun */
 .reminders { list-style: none; margin: 0 0 1.5rem; padding: 0; display: grid; gap: .5rem; }
 .reminder { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: .75rem 1.1rem; border-radius: 14px; font-size: .9rem; font-weight: 500; }
+.reminder > span { flex: 1 1 20rem; }
 .reminder--ok { background: var(--green-100); color: var(--green-900); }
 .reminder--soon { background: var(--soon-soft); color: var(--soon); }
 .reminder--late { background: var(--late-soft); color: #6E2213; }
@@ -636,4 +639,38 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
   .panel, .stats > div { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
   .stats > div:first-child { background: none; color: inherit; }
   .stats > div:first-child dt, .stats > div:first-child span { color: inherit; }
+}
+
+/* Form alasan penolakan di Sirkulasi */
+.reject { display: inline-block; vertical-align: top; margin-left: .4rem; text-align: left; white-space: normal; }
+.reject summary { list-style: none; cursor: pointer; }
+.reject summary::-webkit-details-marker { display: none; }
+.reject[open] { display: block; margin: .6rem 0 0; }
+.reject[open] summary { display: none; }
+.table .actions .reject__form { display: grid; grid-template-columns: minmax(0, 1fr); gap: .35rem; width: 15rem; max-width: 100%; }
+.reject__form label { font-size: .74rem; font-weight: 500; color: var(--muted); }
+.reject__form select, .reject__form input { width: 100%; min-height: 2.2rem; padding: .25rem .6rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font: inherit; font-size: .85rem; color: var(--ink); max-width: 100%; }
+.reject__form .btn { margin-top: .25rem; }
+
+/* Panduan tambahan di beranda */
+.how-extra { display: grid; gap: 1.25rem; margin-top: 1.25rem; }
+@media (min-width: 860px) { .how-extra { grid-template-columns: 1fr 1fr; } }
+.how-extra > div { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.75rem; }
+.how-extra p { color: var(--ink-2); margin: 0; font-size: .92rem; }
+
+/* Tabel ber-tombol jadi tumpukan kartu di ponsel, supaya aksinya tidak perlu digeser */
+@media (max-width: 640px) {
+  .table--stack, .table--stack tbody, .table--stack tr, .table--stack td { display: block; width: auto; }
+  .table--stack thead { display: none; }
+  .table--stack tr { padding: .85rem 0; border-bottom: 1px solid var(--line); }
+  .table--stack tr:last-child { border-bottom: 0; }
+  .table .table--stack td, .table--stack td, .table--stack td:first-child, .table--stack td:last-child { padding: .15rem 0; border: 0; }
+  .table--stack .num { text-align: left; }
+  .table--stack td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); }
+  .table--stack .actions { text-align: left; white-space: normal; padding-top: .6rem; }
+  .table--stack .actions form, .table--stack .actions form + form { display: inline-block; margin: 0 .4rem .4rem 0; }
+  .table--stack .return-form { display: flex !important; flex-flow: row wrap; align-items: center; margin-right: 0; }
+  .table--stack tbody tr:hover td { background: none; }
+  .table--stack .koleksi__judul { display: flex; }
+  .table--stack .row-form__kode { flex-basis: 100% !important; }
 }

@@ -7,6 +7,11 @@ if ($u['role'] === 'admin') redirect('admin/sirkulasi.php');
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_cek();
 
+    if (isset($_POST['tutup_pesan'])) {
+        q('UPDATE pemberitahuan SET dibaca = NOW() WHERE id = ? AND user_id = ? AND dibaca IS NULL', [(int) $_POST['tutup_pesan'], $u['id']]);
+        redirect('pinjaman.php');
+    }
+
     if (isset($_POST['keluar_antrean'])) {
         q('DELETE FROM antrean WHERE id = ? AND user_id = ?', [(int) $_POST['keluar_antrean'], $u['id']]);
         flash('ok', 'Kamu sudah keluar dari antrean.');
@@ -64,23 +69,25 @@ $riwayat = q('SELECT p.*, b.judul, b.penulis FROM peminjaman p JOIN buku b ON b.
               WHERE p.user_id = ? AND p.tgl_kembali IS NOT NULL ORDER BY p.tgl_kembali DESC LIMIT 30', [$u['id']])->fetchAll();
 $tagihan = array_values(array_filter($riwayat, fn($r) => $r['denda'] + $r['denda_kondisi'] > 0 && !$r['denda_lunas']));
 $totalTagihan = denda_belum_lunas((int) $u['id']);
-$antrean = q('SELECT a.*, b.judul, b.penulis, b.sampul, b.no_panggil,
-                (SELECT COUNT(*) FROM antrean x WHERE x.buku_id = a.buku_id AND x.tgl_tersedia IS NULL
-                   AND (x.dibuat < a.dibuat OR (x.dibuat = a.dibuat AND x.id < a.id))) + 1 AS posisi
+$antrean = q('SELECT a.*, b.judul, b.penulis, b.sampul, b.no_panggil, ' . SQL_POSISI_ANTREAN . ' AS posisi
               FROM antrean a JOIN buku b ON b.id = a.buku_id WHERE a.user_id = ? ORDER BY a.tgl_tersedia IS NULL, a.dibuat', [$u['id']])->fetchAll();
 $pengingat = pengingat($u);
+$pemberitahuan = q('SELECT id, pesan FROM pemberitahuan WHERE user_id = ? AND dibaca IS NULL ORDER BY id DESC', [$u['id']])->fetchAll();
+$riwayatPesan = q('SELECT pesan, dibuat FROM pemberitahuan WHERE user_id = ? AND dibaca IS NOT NULL ORDER BY dibuat DESC, id DESC LIMIT 30', [$u['id']])->fetchAll();
 
 $dendaBerjalan = array_sum(array_map('denda_pinjaman', $aktif));
-$siapAmbil = count(array_filter($aktif, fn($p) => !$p['tgl_ambil']));
+$belumDisetujui = count(array_filter($aktif, fn($p) => !$p['tgl_setuju'] && !$p['tgl_ambil']));
+$siapAmbil = count(array_filter($aktif, fn($p) => $p['tgl_setuju'] && !$p['tgl_ambil']));
 $menunggu = count(array_filter($aktif, fn($p) => $p['tgl_ajuan']));
 $berjalan = array_values(array_filter($aktif, fn($p) => $p['tgl_ambil'] && !$p['tgl_ajuan']));
 usort($berjalan, fn($a, $b) => strcmp($a['jatuh_tempo'], $b['jatuh_tempo']));
 $terdekat = $berjalan[0]['jatuh_tempo'] ?? null;
 $adaTelat = (bool) array_filter($berjalan, fn($p) => $p['format'] === 'fisik' && $p['jatuh_tempo'] < date('Y-m-d'));
-$keteranganJumlah = array_filter([$siapAmbil ? "$siapAmbil siap diambil" : '', $menunggu ? "$menunggu menunggu dicek" : '']);
+$keteranganJumlah = array_filter([$belumDisetujui ? "$belumDisetujui menunggu persetujuan" : '', $siapAmbil ? "$siapAmbil siap diambil" : '', $menunggu ? "$menunggu menunggu dicek" : '']);
 
 $judul = 'Pinjaman saya';
 $menu = 'pinjaman';
+$live = true;
 require __DIR__ . '/partials/header.php';
 ?>
 
@@ -94,8 +101,15 @@ require __DIR__ . '/partials/header.php';
     <a class="btn" href="<?= url('katalog.php') ?>">Pinjam buku lain</a>
   </header>
 
-  <?php if ($pengingat): ?>
+  <?php if ($pemberitahuan || $pengingat): ?>
     <ul class="reminders" aria-label="Pengingat">
+      <?php foreach ($pemberitahuan as $n): ?>
+        <li class="reminder reminder--late"><span><?= e($n['pesan']) ?></span>
+          <form method="post">
+            <?= csrf_field() ?>
+            <button class="btn btn--sm btn--ghost" name="tutup_pesan" value="<?= $n['id'] ?>">Mengerti</button>
+          </form></li>
+      <?php endforeach ?>
       <?php foreach ($pengingat as [$kls, $pesan, $link]): ?>
         <li class="reminder reminder--<?= $kls ?>"><span><?= e($pesan) ?></span>
           <?php if (str_starts_with($link, 'pinjam.php')): ?><a class="btn btn--sm" href="<?= url($link) ?>">Pinjam sekarang</a><?php endif ?></li>
@@ -129,7 +143,11 @@ require __DIR__ . '/partials/header.php';
               <p class="muted"><span class="tag <?= $ebook ? 'tag--accent' : '' ?>"><?= LABEL_FORMAT[$p['format']] ?></span> <?= e($p['penulis']) ?></p>
               <?php if (!$p['tgl_ambil']): ?>
                 <p class="loan__dates">Dipesan <?= tgl($p['tgl_pinjam']) ?> · lama pinjam <?= (int) $p['durasi'] ?> hari, dihitung sejak diambil</p>
-                <p class="loan__note">Ambil di meja sirkulasi<?= $p['rak'] !== '' ? ' · Rak ' . e($p['rak']) : '' ?> paling lambat <?= tgl(batas_ambil($p), true) ?>. Lewat dari itu pesanan batal otomatis.</p>
+                <?php if ($p['tgl_setuju']): ?>
+                  <p class="loan__note">Disetujui petugas. Ambil di meja sirkulasi<?= $p['rak'] !== '' ? ' · Rak ' . e($p['rak']) : '' ?> paling lambat <?= tgl(batas_ambil($p), true) ?>. Lewat dari itu pesanan batal otomatis.</p>
+                <?php else: ?>
+                  <p class="loan__note">Petugas sedang memeriksa permintaanmu. Setelah disetujui, kamu punya <?= BATAS_AMBIL ?> hari untuk mengambil bukunya.</p>
+                <?php endif ?>
               <?php else: ?>
                 <p class="loan__dates">Dipinjam <?= tgl($p['tgl_ambil']) ?> (<?= (int) $p['durasi'] ?> hari) · Jatuh tempo <strong><?= tgl($p['jatuh_tempo']) ?></strong>
                   <?= $p['perpanjang'] ? ' · sudah diperpanjang' : '' ?></p>
@@ -183,7 +201,7 @@ require __DIR__ . '/partials/header.php';
     <section class="section section--tight">
       <h2>Antrean buku fisik</h2>
       <ul class="loans">
-        <?php foreach ($antrean as $a): $sampai = date('Y-m-d', strtotime(($a['tgl_tersedia'] ?? 'today') . ' +' . BATAS_GILIRAN . ' days')); ?>
+        <?php foreach ($antrean as $a): ?>
           <li class="loan loan--<?= $a['tgl_tersedia'] ? 'ok' : 'wait' ?>">
             <?= sampul($a, 'sm') ?>
             <div class="loan__body">
@@ -193,7 +211,7 @@ require __DIR__ . '/partials/header.php';
             </div>
             <div class="loan__side">
               <?php if ($a['tgl_tersedia']): ?>
-                <span class="due due--ok">Giliranmu sampai <?= tgl($sampai) ?></span>
+                <span class="due due--ok">Giliranmu sampai <?= tgl(batas_giliran($a['tgl_tersedia'])) ?></span>
                 <a class="btn btn--sm" href="<?= url('pinjam.php?id=' . $a['buku_id']) ?>">Pinjam sekarang</a>
               <?php else: ?>
                 <span class="due due--wait">Antrean ke-<?= (int) $a['posisi'] ?></span>
@@ -254,6 +272,22 @@ require __DIR__ . '/partials/header.php';
       </div>
     <?php endif ?>
   </section>
+
+  <?php if ($riwayatPesan): ?>
+    <section class="section section--tight" id="riwayat-pemberitahuan">
+      <h2>Riwayat pemberitahuan</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Tanggal</th><th>Pesan</th></tr></thead>
+          <tbody>
+          <?php foreach ($riwayatPesan as $n): ?>
+            <tr><td><?= tgl($n['dibuat']) ?></td><td><?= e($n['pesan']) ?></td></tr>
+          <?php endforeach ?>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  <?php endif ?>
 </div>
 
 <?php require __DIR__ . '/partials/footer.php'; ?>

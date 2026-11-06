@@ -75,6 +75,7 @@ require __DIR__ . '/partials/header.php';
       <?= csrf_field() ?>
       <h1>Pinjam buku</h1>
       <p class="muted">Kamu sedang meminjam <strong><?= $jumlahPinjam ?></strong> dari maksimal <?= MAKS_PINJAM ?> buku.</p>
+      <?= keterangan_wajib() ?>
 
       <?php if ($galat): ?><div class="notice notice--error" role="alert"><?= e($galat) ?></div><?php endif ?>
       <?php if (!$bisa): ?>
@@ -88,7 +89,7 @@ require __DIR__ . '/partials/header.php';
       <?php endif ?>
 
       <fieldset>
-        <legend>Mau pinjam yang mana?</legend>
+        <legend>Mau pinjam yang mana? <?= wajib() ?></legend>
         <div class="choices">
           <?php foreach ($pilihanFormat as $f => [$ada, $cara, $stok]): ?>
             <label class="choice">
@@ -104,7 +105,7 @@ require __DIR__ . '/partials/header.php';
       </fieldset>
 
       <fieldset>
-        <legend>Lama pinjam</legend>
+        <legend>Lama pinjam <?= wajib() ?></legend>
         <div class="choices">
           <?php foreach (PILIHAN_LAMA as $n): ?>
             <label class="choice">
@@ -124,7 +125,7 @@ require __DIR__ . '/partials/header.php';
         <ul class="rules">
           <li><strong>Semua format:</strong> maksimal <?= MAKS_PINJAM ?> buku sekaligus, bisa diperpanjang <?= MAKS_PERPANJANG ?>× selama belum lewat jatuh tempo dan buku fisiknya tidak sedang diantre anggota lain.</li>
           <li><strong>E-book:</strong> dibaca di website selama masa pinjam, hanya untuk pribadi. Bisa dikembalikan kapan saja, dan berakhir otomatis di tanggal jatuh tempo tanpa denda.</li>
-          <li><strong>Buku fisik — pengambilan:</strong> ambil di meja sirkulasi paling lambat <?= BATAS_AMBIL ?> hari setelah dipesan; lewat dari itu pesanan batal otomatis. Masa pinjam dihitung sejak buku diambil.</li>
+          <li><strong>Buku fisik — persetujuan &amp; pengambilan:</strong> permintaan harus disetujui petugas dulu. Setelah disetujui, ambil di meja sirkulasi paling lambat <?= BATAS_AMBIL ?> hari; lewat dari itu pesanan batal otomatis. Masa pinjam dihitung sejak buku diambil.</li>
           <li><strong>Buku fisik — terlambat:</strong> denda <?= rupiah(DENDA_PER_HARI) ?> per hari. Selama ada buku fisik yang terlambat atau denda yang belum lunas, kamu belum bisa meminjam buku lain.</li>
           <li><strong>Buku fisik — rusak</strong> (sobek, basah, dicoret, halaman lepas): denda <?= rupiah(DENDA_KONDISI['rusak']) ?>. <strong>Hilang:</strong> ganti dengan buku yang sama, atau bayar <?= rupiah(DENDA_KONDISI['hilang']) ?>.</li>
           <li><strong>Buku fisik — pengembalian:</strong> serahkan buku ke meja sirkulasi dan ajukan pengembalian dari menu Pinjaman saya. Pengembalian selesai setelah petugas mengecek kondisi buku dan menyetujuinya.</li>
@@ -133,7 +134,7 @@ require __DIR__ . '/partials/header.php';
 
       <label class="check agree">
         <input type="checkbox" name="setuju" value="1"<?= !empty($_POST['setuju']) ? ' checked' : '' ?><?= $bisa ? '' : ' disabled' ?>>
-        Saya sudah membaca dan menyetujui ketentuan peminjaman di atas.
+        <span>Saya sudah membaca dan menyetujui ketentuan peminjaman di atas. <?= wajib() ?></span>
       </label>
 
       <div class="form__actions">

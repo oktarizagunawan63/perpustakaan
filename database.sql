@@ -6,6 +6,7 @@ SET NAMES utf8mb4;
 CREATE DATABASE IF NOT EXISTS db_perpustakaan CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE db_perpustakaan;
 
+DROP TABLE IF EXISTS pemberitahuan;
 DROP TABLE IF EXISTS usulan;
 DROP TABLE IF EXISTS favorit;
 DROP TABLE IF EXISTS antrean;
@@ -60,7 +61,8 @@ CREATE TABLE peminjaman (
   buku_id INT NOT NULL,
   format ENUM('fisik','ebook') NOT NULL DEFAULT 'fisik', -- buku fisik (stok terbatas) atau e-book (dibaca online)
   tgl_pinjam DATE NOT NULL,                          -- tanggal dipinjam/dipesan
-  tgl_ambil DATE NULL,                               -- buku fisik pesanan online diambil di meja sirkulasi (NULL = siap diambil)
+  tgl_setuju DATE NULL,                              -- petugas menyetujui permintaan buku fisik (NULL = menunggu persetujuan)
+  tgl_ambil DATE NULL,                               -- buku fisik diambil di meja sirkulasi (NULL = belum diambil)
   jatuh_tempo DATE NOT NULL,
   tgl_ajuan DATE NULL,                               -- buku fisik diserahkan anggota, menunggu dicek petugas
   tgl_kembali DATE NULL,                             -- pengembalian selesai (disetujui petugas)
@@ -94,6 +96,16 @@ CREATE TABLE favorit (
   PRIMARY KEY (user_id, buku_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (buku_id) REFERENCES buku(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Pesan untuk anggota (ditolak, dibatalkan, batal otomatis); dibaca NULL = belum ditutup, setelah itu pindah ke riwayat
+CREATE TABLE pemberitahuan (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  pesan VARCHAR(500) NOT NULL,
+  dibuat TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  dibaca DATETIME NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Usulan buku baru dari anggota
@@ -176,6 +188,8 @@ INSERT INTO peminjaman (user_id, buku_id, format, tgl_pinjam, tgl_ambil, jatuh_t
 (2, 7, 'fisik', CURDATE() - INTERVAL 20 DAY, CURDATE() - INTERVAL 20 DAY, CURDATE() - INTERVAL 13 DAY, CURDATE() - INTERVAL 11 DAY, CURDATE() - INTERVAL 11 DAY, 7, 0, 2000, 'baik', 0, CURDATE() - INTERVAL 11 DAY),
 (3, 5, 'fisik', CURDATE() - INTERVAL 15 DAY, CURDATE() - INTERVAL 15 DAY, CURDATE() - INTERVAL 8 DAY,  CURDATE() - INTERVAL 9 DAY, CURDATE() - INTERVAL 9 DAY, 7, 0, 0, 'rusak', 50000, NULL),
 (2, 8, 'fisik', CURDATE(),                   NULL,                        CURDATE() + INTERVAL 7 DAY,  NULL, NULL, 7, 0, 0, NULL, 0, NULL);
+
+UPDATE peminjaman SET tgl_setuju = tgl_pinjam WHERE tgl_ambil IS NOT NULL;
 
 INSERT INTO favorit (user_id, buku_id) VALUES (2, 2), (2, 6);
 

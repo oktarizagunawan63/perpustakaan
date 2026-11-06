@@ -20,7 +20,7 @@ const MAKS_PERPANJANG = 1;
 const DENDA_PER_HARI  = 1000;  // rupiah, per buku per hari terlambat
 // Denda kondisi buku saat dikembalikan (rupiah). Hilang: atau mengganti dengan buku yang sama.
 const DENDA_KONDISI   = ['baik' => 0, 'rusak' => 50000, 'hilang' => 150000];
-const BATAS_AMBIL     = 2;     // hari: buku fisik pesanan online harus diambil, lewat itu batal otomatis
+const BATAS_AMBIL     = 2;     // hari: buku fisik harus diambil setelah disetujui petugas, lewat itu batal otomatis
 const BATAS_GILIRAN   = 2;     // hari: eksemplar disimpan untuk anggota yang mendapat giliran antrean
 
 // Jam layanan per hari (1 = Senin ... 7 = Minggu), null = tutup
@@ -58,9 +58,17 @@ function rawat_data(): void
     // E-book berakhir otomatis setelah tanggal jatuh tempo, tanpa denda
     q("UPDATE peminjaman SET tgl_kembali = jatuh_tempo, kondisi = 'baik'
        WHERE format = 'ebook' AND tgl_kembali IS NULL AND jatuh_tempo < CURDATE()");
-    // Pesanan buku fisik yang tidak diambil dibatalkan, eksemplarnya kembali tersedia
-    q("DELETE FROM peminjaman WHERE format = 'fisik' AND tgl_ambil IS NULL AND tgl_kembali IS NULL
-       AND tgl_pinjam < CURDATE() - INTERVAL " . BATAS_AMBIL . " DAY");
+    // Pesanan yang sudah disetujui tapi tidak diambil dibatalkan, eksemplarnya kembali tersedia, anggotanya diberi tahu
+    $lewat = "p.format = 'fisik' AND p.tgl_ambil IS NULL AND p.tgl_kembali IS NULL AND p.tgl_setuju < CURDATE() - INTERVAL " . BATAS_AMBIL . ' DAY';
+    if (q("SELECT 1 FROM peminjaman p WHERE $lewat LIMIT 1")->fetch()) {
+        // FOR UPDATE: dasbor yang memantau bersamaan tidak boleh mengirim pemberitahuan ganda
+        db()->beginTransaction();
+        foreach (q("SELECT p.id, p.user_id, b.judul FROM peminjaman p JOIN buku b ON b.id = p.buku_id WHERE $lewat FOR UPDATE")->fetchAll() as $p) {
+            q('INSERT INTO pemberitahuan (user_id, pesan) VALUES (?, ?)', [$p['user_id'], 'Pesanan buku fisik “' . $p['judul'] . '” batal otomatis karena tidak diambil dalam ' . BATAS_AMBIL . ' hari setelah disetujui.']);
+            q('DELETE FROM peminjaman WHERE id = ?', [$p['id']]);
+        }
+        db()->commit();
+    }
     // Giliran antrean yang tidak dipakai hangus
     q('DELETE FROM antrean WHERE tgl_tersedia < CURDATE() - INTERVAL ' . BATAS_GILIRAN . ' DAY');
     // Eksemplar kosong diberikan ke antrean terdepan
@@ -177,16 +185,22 @@ function denda_pinjaman(array $p): int
     return $p['format'] === 'ebook' || !$p['tgl_ambil'] ? 0 : hitung_denda($p['jatuh_tempo'], $p['tgl_ajuan'] ?: null);
 }
 
-/** Batas terakhir mengambil buku fisik yang dipesan online. */
+/** Batas terakhir mengambil buku fisik, dihitung sejak petugas menyetujui. */
 function batas_ambil(array $p): string
 {
-    return date('Y-m-d', strtotime($p['tgl_pinjam'] . ' +' . BATAS_AMBIL . ' days'));
+    return date('Y-m-d', strtotime($p['tgl_setuju'] . ' +' . BATAS_AMBIL . ' days'));
 }
 
-/** Status pinjaman yang belum selesai → [kelas css, label]: siap diambil, menunggu dicek, atau sisa hari. */
+/** Batas terakhir memakai giliran antrean; lewat dari itu eksemplarnya pindah ke antrean berikutnya. */
+function batas_giliran(string $tglTersedia): string
+{
+    return date('Y-m-d', strtotime($tglTersedia . ' +' . BATAS_GILIRAN . ' days'));
+}
+
+/** Status pinjaman yang belum selesai → [kelas css, label]: menunggu persetujuan, siap diambil, menunggu dicek, atau sisa hari. */
 function status_pinjaman(array $p): array
 {
-    if (!$p['tgl_ambil']) return ['wait', 'Siap diambil sampai ' . tgl(batas_ambil($p))];
+    if (!$p['tgl_ambil']) return ['wait', $p['tgl_setuju'] ? 'Siap diambil sampai ' . tgl(batas_ambil($p)) : 'Menunggu persetujuan petugas'];
     if ($p['tgl_ajuan']) return ['wait', 'Menunggu pengecekan petugas'];
     [$kls, $lbl] = status_tempo($p['jatuh_tempo']);
     if ($p['format'] === 'ebook') $lbl = str_replace(['Kembali dalam', 'Kembalikan hari ini'], ['Akses berakhir dalam', 'Akses berakhir hari ini'], $lbl);
@@ -194,6 +208,20 @@ function status_pinjaman(array $p): array
 }
 
 const LABEL_FORMAT = ['fisik' => 'Buku fisik', 'ebook' => 'E-book'];
+// Alasan yang bisa dipilih petugas saat menolak atau membatalkan permintaan buku fisik
+const ALASAN_TOLAK = [
+    'Buku tidak ditemukan di rak',
+    'Eksemplar rusak atau sedang diperbaiki',
+    'Buku hanya untuk dibaca di tempat',
+    'Eksemplar dipakai untuk keperluan perpustakaan',
+    'Data anggota perlu dicek di meja sirkulasi',
+    'Lainnya',
+];
+
+// --- Penanda formulir: * untuk isian wajib, (opsional) untuk yang boleh kosong ---
+function wajib(): string { return '<span class="req" title="Wajib diisi" aria-hidden="true">*</span>'; }
+function opsional(string $ket = ''): string { return '<span class="opt">(opsional' . ($ket !== '' ? ', ' . e($ket) : '') . ')</span>'; }
+function keterangan_wajib(): string { return '<p class="form__key"><span class="req" aria-hidden="true">*</span> Wajib diisi</p>'; }
 
 function status_layanan(): array
 {
@@ -238,8 +266,10 @@ function validasi_anggota(array $in, int $idSendiri = 0): array
 {
     $d = ['nama' => trim($in['nama'] ?? ''), 'email' => strtolower(trim($in['email'] ?? '')), 'telepon' => trim($in['telepon'] ?? '')];
     $galat = [];
-    if (mb_strlen($d['nama']) < 3) $galat['nama'] = 'Isi nama lengkap (minimal 3 huruf).';
-    if (!filter_var($d['email'], FILTER_VALIDATE_EMAIL)) $galat['email'] = 'Format email belum benar, contoh: nama@kampus.ac.id';
+    if (mb_strlen($d['nama']) < 3 || mb_strlen($d['nama']) > 100) $galat['nama'] = 'Isi nama lengkap (3–100 karakter).';
+    elseif (!preg_match("/^[\\p{L}][\\p{L} .,'\\-]*$/u", $d['nama'])) $galat['nama'] = 'Nama hanya boleh berisi huruf, spasi, titik, koma, tanda petik, atau strip.';
+    if ($d['email'] === '') $galat['email'] = 'Email wajib diisi.';
+    elseif (!filter_var($d['email'], FILTER_VALIDATE_EMAIL) || strlen($d['email']) > 120) $galat['email'] = 'Format email belum benar, contoh: nama@kampus.ac.id';
     elseif (q('SELECT 1 FROM users WHERE email = ? AND id <> ?', [$d['email'], $idSendiri])->fetch()) $galat['email'] = $idSendiri ? 'Email ini sudah dipakai akun lain.' : 'Email ini sudah terdaftar. Coba masuk saja.';
     if ($d['telepon'] !== '' && !preg_match('/^\+?[0-9 \-]{8,16}$/', $d['telepon'])) $galat['telepon'] = 'Nomor telepon hanya angka, 8–16 digit.';
     return [$d, $galat];
@@ -254,6 +284,7 @@ function daftarkan_anggota(array $in): array
     [$d, $galat] = validasi_anggota($in);
     $pw = $in['password'] ?? '';
     if (strlen($pw) < 8) $galat['password'] = 'Kata sandi minimal 8 karakter.';
+    if (isset($in['password2']) && $pw !== $in['password2']) $galat['password2'] = 'Kedua kata sandi belum sama.';
     if ($galat) return [null, $galat];
 
     q('INSERT INTO users (no_anggota, nama, email, telepon, password) VALUES (?, ?, ?, ?, ?)',
@@ -308,24 +339,39 @@ function catat_pinjaman(array $agt, int $bukuId, int $hari, string $format, bool
             $db->rollBack();
             return [false, $galat];
         }
-        // Buku fisik pesanan online baru dihitung masa pinjamnya saat diambil (jatuh tempo dihitung ulang oleh petugas)
+        // Buku fisik pesanan online menunggu persetujuan petugas; masa pinjamnya dihitung ulang saat diambil
         $diambil = $format === 'ebook' || $langsungDiambil;
         $tempo = date('Y-m-d', strtotime("+$hari days"));
-        q('INSERT INTO peminjaman (user_id, buku_id, format, tgl_pinjam, tgl_ambil, jatuh_tempo, durasi) VALUES (?, ?, ?, CURDATE(), ?, ?, ?)',
-            [$agt['id'], $bukuId, $format, $diambil ? date('Y-m-d') : null, $tempo, $hari]);
+        $hariIni = $diambil ? date('Y-m-d') : null;
+        q('INSERT INTO peminjaman (user_id, buku_id, format, tgl_pinjam, tgl_setuju, tgl_ambil, jatuh_tempo, durasi) VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?)',
+            [$agt['id'], $bukuId, $format, $hariIni, $hariIni, $tempo, $hari]);
         q('DELETE FROM antrean WHERE user_id = ? AND buku_id = ?', [$agt['id'], $bukuId]);
         $db->commit();
         $rak = $buku['rak'] !== '' ? ' (Rak ' . $buku['rak'] . ')' : '';
         return [true, match (true) {
             $format === 'ebook' => '“' . $buku['judul'] . '” (e-book) dipinjam selama ' . $hari . ' hari dan bisa dibaca sampai ' . tgl($tempo, true) . '.',
             $diambil => '“' . $buku['judul'] . '” (buku fisik) dipinjam selama ' . $hari . ' hari, kembali paling lambat ' . tgl($tempo, true) . '.',
-            default => 'Buku fisik “' . $buku['judul'] . '” disiapkan untukmu. Ambil di meja sirkulasi' . $rak . ' paling lambat '
-                . tgl(date('Y-m-d', strtotime('+' . BATAS_AMBIL . ' days')), true) . ' — masa pinjam ' . $hari . ' hari dihitung sejak buku diambil.',
+            default => 'Permintaan pinjam “' . $buku['judul'] . '” terkirim. Tunggu persetujuan petugas, lalu ambil bukunya di meja sirkulasi' . $rak
+                . ' paling lambat ' . BATAS_AMBIL . ' hari setelah disetujui. Masa pinjam ' . $hari . ' hari dihitung sejak buku diambil.',
         }];
     } catch (Throwable $t) {
         $db->rollBack();
         throw $t;
     }
+}
+
+/** Sidik data yang tampil di dasbor: berubah saat ada aksi baru, dipakai halaman untuk memperbarui diri. Anggota hanya memantau datanya sendiri. */
+function versi_data(array $u): string
+{
+    $milik = $u['role'] === 'admin' ? [] : [$u['id']];
+    $saring = $milik ? 'WHERE user_id = ?' : '';
+    return md5(json_encode([
+        q("SELECT COUNT(*), COALESCE(MAX(id), 0), COUNT(tgl_setuju), COUNT(tgl_ambil), COUNT(tgl_ajuan), COUNT(tgl_kembali), COUNT(denda_lunas), COALESCE(SUM(perpanjang), 0) FROM peminjaman $saring", $milik)->fetch(PDO::FETCH_NUM),
+        q("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(CRC32(CONCAT(status, COALESCE(catatan, '')))), 0) FROM usulan $saring", $milik)->fetch(PDO::FETCH_NUM),
+        q('SELECT COUNT(*), COALESCE(MAX(id), 0), COUNT(tgl_tersedia) FROM antrean')->fetch(PDO::FETCH_NUM),
+        q('SELECT COUNT(*), COALESCE(SUM(stok), 0) FROM buku')->fetch(PDO::FETCH_NUM),
+        q('SELECT COUNT(*), SUM(aktif) FROM users')->fetch(PDO::FETCH_NUM),
+    ]));
 }
 
 /** Total denda dari pinjaman yang sudah selesai tapi belum dibayar. */
@@ -347,6 +393,7 @@ function pengingat(array $u): array
     foreach ($aktif as $p) {
         $judul = '“' . $p['judul'] . '”';
         if (!$p['tgl_ambil']) {
+            if (!$p['tgl_setuju']) continue; // belum ada yang perlu dilakukan anggota
             $hasil[] = ['soon', "Buku fisik $judul siap diambil di meja sirkulasi sampai " . tgl(batas_ambil($p)) . '.', 'pinjaman.php'];
             continue;
         }
@@ -360,7 +407,7 @@ function pengingat(array $u): array
     }
     foreach (q('SELECT a.tgl_tersedia, b.id, b.judul FROM antrean a JOIN buku b ON b.id = a.buku_id
                 WHERE a.user_id = ? AND a.tgl_tersedia IS NOT NULL', [$u['id']])->fetchAll() as $a) {
-        $sampai = tgl(date('Y-m-d', strtotime($a['tgl_tersedia'] . ' +' . BATAS_GILIRAN . ' days')));
+        $sampai = tgl(batas_giliran($a['tgl_tersedia']));
         $hasil[] = ['ok', "Giliranmu! Buku fisik “{$a['judul']}” disimpan untukmu sampai $sampai — pinjam sekarang.", 'pinjam.php?id=' . $a['id']];
     }
     if ($d = denda_belum_lunas((int) $u['id'])) {
@@ -368,6 +415,10 @@ function pengingat(array $u): array
     }
     return $hasil;
 }
+
+/** Kolom SQL urutan baris antrean `a` di antara yang masih menunggu judul yang sama. */
+const SQL_POSISI_ANTREAN = '((SELECT COUNT(*) FROM antrean x WHERE x.buku_id = a.buku_id AND x.tgl_tersedia IS NULL
+    AND (x.dibuat < a.dibuat OR (x.dibuat = a.dibuat AND x.id < a.id))) + 1)';
 
 /** Kolom SQL jumlah anggota yang masih menunggu buku fisik dari pinjaman `p` (yang sudah dapat giliran tidak dihitung). */
 const SQL_DIANTRE = '(SELECT COUNT(*) FROM antrean a WHERE a.buku_id = p.buku_id AND a.tgl_tersedia IS NULL)';

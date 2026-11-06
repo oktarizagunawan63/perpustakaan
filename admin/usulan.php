@@ -23,6 +23,7 @@ $daftar = q('SELECT s.*, u.nama, u.no_anggota FROM usulan s JOIN users u ON u.id
 $judul = 'Usulan buku';
 $admin = true;
 $menu = 'usulan';
+$live = true;
 require __DIR__ . '/../partials/header.php';
 ?>
 
@@ -40,7 +41,7 @@ require __DIR__ . '/../partials/header.php';
       <p class="muted">Belum ada usulan dari anggota.</p>
     <?php else: ?>
       <div class="table-wrap">
-        <table class="table">
+        <table class="table table--stack">
           <thead><tr><th>Usulan</th><th>Dari</th><th>Status &amp; catatan</th></tr></thead>
           <tbody>
           <?php foreach ($daftar as $s): ?>
@@ -55,8 +56,8 @@ require __DIR__ . '/../partials/header.php';
                   <select id="status-<?= $s['id'] ?>" name="status">
                     <?php foreach (STATUS_USULAN as $k => $label): ?><option value="<?= $k ?>"<?= $s['status'] === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach ?>
                   </select>
-                  <label class="sr-only" for="catatan-<?= $s['id'] ?>">Catatan untuk anggota</label>
-                  <input id="catatan-<?= $s['id'] ?>" name="catatan" value="<?= e($s['catatan']) ?>" maxlength="255" placeholder="Catatan untuk anggota">
+                  <label class="sr-only" for="catatan-<?= $s['id'] ?>">Catatan untuk anggota (opsional)</label>
+                  <input id="catatan-<?= $s['id'] ?>" name="catatan" value="<?= e($s['catatan']) ?>" maxlength="255" placeholder="Catatan untuk anggota (opsional)">
                   <button class="btn btn--sm btn--ghost" name="simpan" value="<?= $s['id'] ?>">Simpan</button>
                 </form>
               </td>

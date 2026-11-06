@@ -102,6 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adaSampulBaru = ($_FILES['sampul_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
 
     if ($b['judul'] === '') $galat['judul'] = 'Judul wajib diisi.';
+    // Batas panjang mengikuti kolom database
+    foreach (['judul' => 200, 'penulis' => 150, 'penerbit' => 120, 'no_panggil' => 40, 'rak' => 20, 'bahasa' => 30] as $f => $maks) {
+        if (mb_strlen($b[$f]) > $maks) $galat[$f] = "Maksimal $maks karakter.";
+    }
     if (!in_array((int) $b['kategori_id'], array_column($kategori, 'id'))) $galat['kategori_id'] = 'Pilih kategori.';
     if ($b['tahun'] !== '' && (!ctype_digit($b['tahun']) || $b['tahun'] < 1000 || $b['tahun'] > date('Y') + 1)) $galat['tahun'] = 'Tahun terbit 4 digit, maksimal ' . (date('Y') + 1) . '.';
     if ($b['isbn'] !== '' && !preg_match('/^(97[89])?\d{9}[\dX]$/', str_replace('-', '', $b['isbn']))) $galat['isbn'] = 'ISBN 10 atau 13 digit.';
@@ -155,7 +159,7 @@ if (!$modeForm) {
 $err = fn(string $f) => isset($galat[$f]) ? '<p class="field__error">' . e($galat[$f]) . '</p>' : '';
 $inv = fn(string $f) => isset($galat[$f]) ? ' aria-invalid="true"' : '';
 $opsionalTerisi = $id || array_filter(array_intersect_key($b, array_flip(['penulis', 'penerbit', 'tahun', 'isbn', 'halaman', 'no_panggil', 'rak', 'sinopsis', 'daftar_isi'])))
-    || array_intersect_key($galat, array_flip(['tahun', 'isbn', 'halaman']));
+    || array_intersect_key($galat, array_flip(['penulis', 'penerbit', 'tahun', 'isbn', 'halaman', 'bahasa', 'no_panggil', 'rak']));
 
 $judul = $modeForm ? ($id ? 'Ubah buku' : 'Tambah buku') : 'Koleksi';
 $admin = true;
@@ -173,10 +177,11 @@ require __DIR__ . '/../partials/header.php';
   <form method="post" enctype="multipart/form-data" class="form panel book-form<?= $id ? ' is-edit' : '' ?>">
     <?= csrf_field() ?>
     <input type="hidden" name="id" value="<?= $id ?>">
+    <?= keterangan_wajib() ?>
 
     <?php if (!$id): ?>
       <fieldset>
-        <legend>Jenis buku</legend>
+        <legend>Jenis buku <?= wajib() ?></legend>
         <div class="choices">
           <?php foreach (['ebook' => 'Upload file PDF isi buku', 'fisik' => 'Upload foto sampul & isi jumlah eksemplar'] as $f => $ket): ?>
             <label class="choice">
@@ -191,9 +196,9 @@ require __DIR__ . '/../partials/header.php';
     <fieldset>
       <legend>Buku</legend>
       <div class="field-row">
-        <div class="field"><label for="judul">Judul</label><input id="judul" name="judul" value="<?= e($b['judul']) ?>" required<?= $inv('judul') ?>><?= $err('judul') ?></div>
+        <div class="field"><label for="judul">Judul <?= wajib() ?></label><input id="judul" name="judul" value="<?= e($b['judul']) ?>" required<?= $inv('judul') ?>><?= $err('judul') ?></div>
         <div class="field">
-          <label for="kategori_id">Kategori</label>
+          <label for="kategori_id">Kategori <?= wajib() ?></label>
           <select id="kategori_id" name="kategori_id" required<?= $inv('kategori_id') ?>>
             <option value="">Pilih…</option>
             <?php foreach ($kategori as $k): ?>
@@ -205,7 +210,7 @@ require __DIR__ . '/../partials/header.php';
 
       <div class="upload-row">
         <div class="field only-ebook">
-          <label for="pdf">File PDF isi buku <?= $id ? '<span class="opt">ganti bila perlu</span>' : '' ?></label>
+          <label for="pdf">File PDF isi buku <?= $id ? opsional('ganti bila perlu') : wajib() ?></label>
           <?php if ($b['file_pdf']): ?><p class="field__hint">Sekarang: <span class="mono"><?= e($b['file_pdf']) ?></span></p><?php endif ?>
           <input id="pdf" name="pdf" type="file" accept="application/pdf,.pdf" class="file"<?= $inv('pdf') ?>>
           <?= $err('pdf') ?>
@@ -221,7 +226,7 @@ require __DIR__ . '/../partials/header.php';
         </div>
 
         <div class="field">
-          <label for="sampul_file">Foto sampul <span class="opt only-ebook"><?= $id ? 'ganti bila perlu' : 'opsional untuk e-book' ?></span></label>
+          <label for="sampul_file">Foto sampul <?= $id ? opsional('ganti bila perlu') : '<span class="only-fisik">' . wajib() . '</span><span class="only-ebook">' . opsional() . '</span>' ?></label>
           <div class="cover-input">
             <?= $b['sampul'] ? sampul($b, 'sm') : '<span class="cover-input__empty" aria-hidden="true">Belum ada</span>' ?>
             <div>
@@ -233,32 +238,32 @@ require __DIR__ . '/../partials/header.php';
         </div>
 
         <div class="field only-fisik">
-          <label for="stok">Jumlah eksemplar fisik</label>
+          <label for="stok">Jumlah eksemplar fisik <?= wajib() ?></label>
           <input id="stok" name="stok" type="number" min="0" max="255" value="<?= e((string) $b['stok']) ?>"<?= $inv('stok') ?>><?= $err('stok') ?>
         </div>
       </div>
     </fieldset>
 
     <details class="more"<?= $opsionalTerisi ? ' open' : '' ?>>
-      <summary>Detail lainnya <span class="opt">opsional — penulis, penerbit, tahun, rak, sinopsis, daftar isi</span></summary>
+      <summary>Detail lainnya <span class="opt">(opsional) penulis, penerbit, tahun, rak, sinopsis, daftar isi</span></summary>
       <div class="field-row">
-        <div class="field"><label for="penulis">Penulis</label><input id="penulis" name="penulis" value="<?= e($b['penulis']) ?>"></div>
-        <div class="field"><label for="penerbit">Penerbit</label><input id="penerbit" name="penerbit" value="<?= e($b['penerbit']) ?>"></div>
+        <div class="field"><label for="penulis">Penulis <?= opsional() ?></label><input id="penulis" name="penulis" value="<?= e($b['penulis']) ?>"<?= $inv('penulis') ?>><?= $err('penulis') ?></div>
+        <div class="field"><label for="penerbit">Penerbit <?= opsional() ?></label><input id="penerbit" name="penerbit" value="<?= e($b['penerbit']) ?>"<?= $inv('penerbit') ?>><?= $err('penerbit') ?></div>
       </div>
       <div class="field-row field-row--4">
-        <div class="field"><label for="tahun">Tahun terbit</label><input id="tahun" name="tahun" inputmode="numeric" maxlength="4" value="<?= e((string) $b['tahun']) ?>"<?= $inv('tahun') ?>><?= $err('tahun') ?></div>
-        <div class="field"><label for="isbn">ISBN</label><input id="isbn" name="isbn" inputmode="numeric" value="<?= e((string) $b['isbn']) ?>"<?= $inv('isbn') ?>><?= $err('isbn') ?></div>
-        <div class="field"><label for="halaman">Halaman</label><input id="halaman" name="halaman" inputmode="numeric" value="<?= e((string) $b['halaman']) ?>"<?= $inv('halaman') ?>><?= $err('halaman') ?></div>
-        <div class="field"><label for="bahasa">Bahasa</label><input id="bahasa" name="bahasa" list="dl-bahasa" value="<?= e($b['bahasa']) ?>">
+        <div class="field"><label for="tahun">Tahun terbit <?= opsional() ?></label><input id="tahun" name="tahun" inputmode="numeric" maxlength="4" value="<?= e((string) $b['tahun']) ?>"<?= $inv('tahun') ?>><?= $err('tahun') ?></div>
+        <div class="field"><label for="isbn">ISBN <?= opsional() ?></label><input id="isbn" name="isbn" inputmode="numeric" value="<?= e((string) $b['isbn']) ?>"<?= $inv('isbn') ?>><?= $err('isbn') ?></div>
+        <div class="field"><label for="halaman">Halaman <?= opsional() ?></label><input id="halaman" name="halaman" inputmode="numeric" value="<?= e((string) $b['halaman']) ?>"<?= $inv('halaman') ?>><?= $err('halaman') ?></div>
+        <div class="field"><label for="bahasa">Bahasa <?= opsional() ?></label><input id="bahasa" name="bahasa" list="dl-bahasa" value="<?= e($b['bahasa']) ?>"<?= $inv('bahasa') ?>><?= $err('bahasa') ?>
           <datalist id="dl-bahasa"><option value="Indonesia"><option value="Inggris"><option value="Arab"><option value="Jawa"></datalist></div>
       </div>
       <div class="field-row">
-        <div class="field"><label for="no_panggil">Nomor panggil</label><input id="no_panggil" name="no_panggil" class="mono" placeholder="615.7 KAT b" value="<?= e($b['no_panggil']) ?>">
+        <div class="field"><label for="no_panggil">Nomor panggil <?= opsional() ?></label><input id="no_panggil" name="no_panggil" class="mono" placeholder="615.7 KAT b" value="<?= e($b['no_panggil']) ?>"<?= $inv('no_panggil') ?>><?= $err('no_panggil') ?>
           <p class="field__hint">Kode kategori + 3 huruf nama belakang penulis + huruf awal judul.</p></div>
-        <div class="field"><label for="rak">Rak</label><input id="rak" name="rak" placeholder="F-01" value="<?= e($b['rak']) ?>"></div>
+        <div class="field"><label for="rak">Rak <?= opsional() ?></label><input id="rak" name="rak" placeholder="F-01" value="<?= e($b['rak']) ?>"<?= $inv('rak') ?>><?= $err('rak') ?></div>
       </div>
-      <div class="field"><label for="sinopsis">Sinopsis</label><textarea id="sinopsis" name="sinopsis" rows="4"><?= e($b['sinopsis']) ?></textarea></div>
-      <div class="field"><label for="daftar_isi">Daftar isi</label><textarea id="daftar_isi" name="daftar_isi" rows="6" placeholder="Bab 1 · Konsep Dasar Farmakologi"><?= e($b['daftar_isi']) ?></textarea>
+      <div class="field"><label for="sinopsis">Sinopsis <?= opsional() ?></label><textarea id="sinopsis" name="sinopsis" rows="4"><?= e($b['sinopsis']) ?></textarea></div>
+      <div class="field"><label for="daftar_isi">Daftar isi <?= opsional() ?></label><textarea id="daftar_isi" name="daftar_isi" rows="6" placeholder="Bab 1 · Konsep Dasar Farmakologi"><?= e($b['daftar_isi']) ?></textarea>
         <p class="field__hint">Satu bagian per baris. Pisahkan nomor dan judul dengan “ · ”, misalnya <span class="mono">Bab 1 · Konsep Dasar Farmakologi</span>.</p></div>
     </details>
 
@@ -284,7 +289,7 @@ require __DIR__ . '/../partials/header.php';
       <button class="btn btn--sm btn--ghost">Cari</button>
     </form>
     <div class="table-wrap">
-      <table class="table">
+      <table class="table table--stack">
         <thead><tr><th>Judul</th><th>Tersedia sebagai</th><th class="num">Dipinjam fisik</th><th>Stok fisik</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($daftar as $r): ?>
@@ -298,7 +303,7 @@ require __DIR__ . '/../partials/header.php';
               <?php if ($r['file_pdf']): ?><span class="tag tag--accent">E-book</span><?php endif ?>
               <?php if ($r['stok'] > 0): ?><span class="tag">Fisik</span><?php endif ?>
             </td>
-            <td class="num"><?= (int) $r['dipinjam'] ?: '—' ?></td>
+            <td class="num" data-label="Dipinjam"><?= (int) $r['dipinjam'] ?: '—' ?></td>
             <td>
               <form method="post" class="stock-form">
                 <?= csrf_field() ?>

@@ -43,10 +43,12 @@ $daftar = q('SELECT u.*,
     . ($cari !== '' ? 'AND (u.nama LIKE ? OR u.email LIKE ? OR u.no_anggota LIKE ?) ' : '') . 'ORDER BY u.nama', $args)->fetchAll();
 
 $err = fn(string $f) => isset($galat[$f]) ? '<p class="field__error">' . e($galat[$f]) . '</p>' : '';
+$inv = fn(string $f) => isset($galat[$f]) ? ' aria-invalid="true"' : '';
 
 $judul = 'Anggota';
 $admin = true;
 $menu = 'anggota';
+$live = true;
 require __DIR__ . '/../partials/header.php';
 ?>
 
@@ -63,14 +65,14 @@ require __DIR__ . '/../partials/header.php';
         <button class="btn btn--sm btn--ghost">Cari</button>
       </form>
       <div class="table-wrap">
-        <table class="table">
+        <table class="table table--stack">
           <thead><tr><th>Anggota</th><th>Kontak</th><th class="num">Pinjam</th><th>Status</th><th></th></tr></thead>
           <tbody>
           <?php foreach ($daftar as $a): ?>
             <tr class="<?= $a['aktif'] ? '' : 'is-muted' ?>">
               <td><?= e($a['nama']) ?><span class="sub mono"><?= e($a['no_anggota']) ?></span></td>
               <td><?= e($a['email']) ?><span class="sub"><?= e($a['telepon'] ?? '—') ?></span></td>
-              <td class="num"><?= (int) $a['aktif_pinjam'] ?: '—' ?><?= $a['telat'] ? ' <span class="tag tag--late">' . (int) $a['telat'] . ' telat</span>' : '' ?></td>
+              <td class="num" data-label="Pinjam"><?= (int) $a['aktif_pinjam'] ?: '—' ?><?= $a['telat'] ? ' <span class="tag tag--late">' . (int) $a['telat'] . ' telat</span>' : '' ?></td>
               <td><?= $a['aktif'] ? '<span class="tag tag--accent">Aktif</span>' : '<span class="tag">Nonaktif</span>' ?></td>
               <td class="actions">
                 <form method="post" data-confirm="Reset kata sandi <?= e($a['nama']) ?>? Kata sandi lamanya tidak berlaku lagi.">
@@ -93,12 +95,13 @@ require __DIR__ . '/../partials/header.php';
     <section class="panel circ__form">
       <h2 class="panel__title">Daftarkan di tempat</h2>
       <p class="muted small">Untuk anggota yang mendaftar langsung di meja layanan.</p>
+      <?= keterangan_wajib() ?>
       <form method="post" class="form" novalidate>
         <?= csrf_field() ?>
-        <div class="field"><label for="nama">Nama lengkap</label><input id="nama" name="nama" value="<?= e($in['nama']) ?>" required><?= $err('nama') ?></div>
-        <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" value="<?= e($in['email']) ?>" required><?= $err('email') ?></div>
-        <div class="field"><label for="telepon">No. WhatsApp <span class="opt">opsional</span></label><input id="telepon" name="telepon" type="tel" value="<?= e($in['telepon']) ?>"><?= $err('telepon') ?></div>
-        <div class="field"><label for="password">Kata sandi awal</label><input id="password" name="password" type="text" autocomplete="off" required>
+        <div class="field"><label for="nama">Nama lengkap <?= wajib() ?></label><input id="nama" name="nama" value="<?= e($in['nama']) ?>" required<?= $inv('nama') ?>><?= $err('nama') ?></div>
+        <div class="field"><label for="email">Email <?= wajib() ?></label><input id="email" name="email" type="email" value="<?= e($in['email']) ?>" required<?= $inv('email') ?>><?= $err('email') ?></div>
+        <div class="field"><label for="telepon">No. WhatsApp <?= opsional() ?></label><input id="telepon" name="telepon" type="tel" value="<?= e($in['telepon']) ?>"<?= $inv('telepon') ?>><?= $err('telepon') ?></div>
+        <div class="field"><label for="password">Kata sandi awal <?= wajib() ?></label><input id="password" name="password" type="text" autocomplete="off" required<?= $inv('password') ?>>
           <?= $err('password') ?: '<p class="field__hint">Minimal 8 karakter. Sampaikan langsung ke anggota.</p>' ?></div>
         <button class="btn btn--block" type="submit">Daftarkan anggota</button>
       </form>

@@ -8,7 +8,8 @@ $s = q('SELECT
           (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL) aktif,
           (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND format = "fisik") aktif_fisik,
           (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_ajuan IS NOT NULL) menunggu,
-          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_ambil IS NULL) pesanan,
+          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_setuju IS NULL AND tgl_ambil IS NULL) permintaan,
+          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_setuju IS NOT NULL AND tgl_ambil IS NULL) pesanan,
           (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_ajuan IS NULL AND format = "fisik" AND jatuh_tempo < CURDATE()) terlambat,
           (SELECT COUNT(*) FROM users WHERE role = "anggota" AND aktif = 1) anggota,
           (SELECT COUNT(*) FROM peminjaman WHERE tgl_pinjam = CURDATE()) pinjam_hari_ini,
@@ -28,6 +29,7 @@ $terakhir = q('SELECT p.*, b.judul, u.nama, COALESCE(p.tgl_kembali, p.tgl_pinjam
 $judul = 'Ringkasan';
 $admin = true;
 $menu = 'dash';
+$live = true;
 require __DIR__ . '/../partials/header.php';
 ?>
 
@@ -40,6 +42,9 @@ require __DIR__ . '/../partials/header.php';
     <a class="btn" href="<?= url('admin/sirkulasi.php') ?>">Buka sirkulasi</a>
   </div>
 
+  <?php if ($s['permintaan']): ?>
+    <div class="notice notice--info"><strong><?= (int) $s['permintaan'] ?> permintaan pinjam buku fisik</strong> menunggu persetujuan. <a href="<?= url('admin/sirkulasi.php') ?>">Setujui di Sirkulasi</a></div>
+  <?php endif ?>
   <?php if ($s['pesanan']): ?>
     <div class="notice notice--info"><strong><?= (int) $s['pesanan'] ?> pesanan buku fisik</strong> menunggu diambil anggota. <a href="<?= url('admin/sirkulasi.php') ?>">Lihat di Sirkulasi</a></div>
   <?php endif ?>

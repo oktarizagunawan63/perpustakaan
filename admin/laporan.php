@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../config.php';
-wajib_admin();
+$u = wajib_admin();
 
 $tanggal = function (string $kunci, string $bawaan): string {
     $v = is_string($_GET[$kunci] ?? null) ? $_GET[$kunci] : '';
@@ -10,26 +10,11 @@ $tanggal = function (string $kunci, string $bawaan): string {
 $dari = $tanggal('dari', date('Y-01-01'));
 $sampai = $tanggal('sampai', date('Y-m-d'));
 if ($dari > $sampai) [$dari, $sampai] = [$sampai, $dari];
+// Laporan hanya mencatat yang sudah terjadi, jadi periode tidak boleh melewati hari ini
+$hariIni = date('Y-m-d');
+$dari = min($dari, $hariIni);
+$sampai = min($sampai, $hariIni);
 $periode = [$dari, $sampai];
-
-if (isset($_GET['unduh'])) {
-    $baris = q('SELECT p.tgl_ambil, u.no_anggota, u.nama, b.judul, p.format, p.jatuh_tempo, p.tgl_kembali, p.kondisi, p.denda, p.denda_kondisi, p.denda_lunas
-                FROM peminjaman p JOIN buku b ON b.id = p.buku_id JOIN users u ON u.id = p.user_id
-                WHERE p.tgl_ambil BETWEEN ? AND ? ORDER BY p.tgl_ambil, p.id', $periode)->fetchAll();
-    // Nama diisi anggota sendiri: awalan rumus dinetralkan supaya tidak dijalankan Excel
-    $aman = fn(string $s) => preg_match('/^[=+\-@\t\r]/', $s) ? "'" . $s : $s;
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="laporan-perpustakaan-' . $dari . '-sd-' . $sampai . '.csv"');
-    $out = fopen('php://output', 'w');
-    fwrite($out, "\xEF\xBB\xBF"); // BOM + pemisah titik koma: terbaca rapi di Excel berbahasa Indonesia
-    fputcsv($out, ['Tanggal pinjam', 'No. anggota', 'Nama', 'Judul', 'Format', 'Jatuh tempo', 'Tanggal kembali', 'Kondisi', 'Denda terlambat', 'Denda kondisi', 'Status denda'], ';', '"', '');
-    foreach ($baris as $r) {
-        $total = $r['denda'] + $r['denda_kondisi'];
-        fputcsv($out, [$r['tgl_ambil'], $r['no_anggota'], $aman($r['nama']), $aman($r['judul']), LABEL_FORMAT[$r['format']], $r['jatuh_tempo'], $r['tgl_kembali'] ?? '',
-            $r['kondisi'] ?? '', $r['denda'], $r['denda_kondisi'], !$total ? '' : ($r['denda_lunas'] ? 'Lunas' : 'Belum lunas')], ';', '"', '');
-    }
-    exit;
-}
 
 $s = q('SELECT COUNT(*) pinjam, COALESCE(SUM(format = "fisik"), 0) fisik, COUNT(DISTINCT user_id) peminjam
         FROM peminjaman WHERE tgl_ambil BETWEEN ? AND ?', $periode)->fetch();
@@ -58,9 +43,57 @@ $anggotaTeratas = q('SELECT u.nama, u.no_anggota, COUNT(*) jumlah, SUM(p.tgl_kem
                      FROM peminjaman p JOIN users u ON u.id = p.user_id
                      WHERE p.tgl_ambil BETWEEN ? AND ? GROUP BY u.id ORDER BY jumlah DESC, u.nama LIMIT 10', $periode)->fetchAll();
 
+$sekarang = tgl($hariIni, true) . ' pukul ' . date('H.i.s') . ' WIB';
+
+if (isset($_GET['unduh'])) {
+    require __DIR__ . '/../partials/pdf.php';
+    $rincian = q('SELECT p.tgl_ambil, u.no_anggota, u.nama, b.judul, p.format, p.jatuh_tempo, p.tgl_kembali, p.kondisi, p.denda, p.denda_kondisi, p.denda_lunas
+                  FROM peminjaman p JOIN buku b ON b.id = p.buku_id JOIN users u ON u.id = p.user_id
+                  WHERE p.tgl_ambil BETWEEN ? AND ? ORDER BY p.tgl_ambil, p.id', $periode)->fetchAll();
+    $stempel = 'Dicetak ' . $sekarang . ' oleh ' . $u['nama'];
+
+    $pdf = new Pdf('Laporan Perpustakaan ' . $dari . ' sampai ' . $sampai, NAMA_PERPUS . ' · ' . $stempel);
+    $pdf->kepala('Laporan Perpustakaan', 'Periode ' . tgl($dari, true) . ' – ' . tgl($sampai, true), $stempel);
+    $pdf->kartu([
+        ['Peminjaman', (string) (int) $s['pinjam'], (int) $s['fisik'] . ' fisik · ' . ((int) $s['pinjam'] - (int) $s['fisik']) . ' e-book'],
+        ['Anggota meminjam', (string) (int) $s['peminjam'], 'Dalam periode ini'],
+        ['Denda tercatat', rupiah($totalDenda), 'Terlambat ' . rupiah((int) $d['telat']) . ' · kondisi ' . rupiah((int) $d['kondisi'])],
+        ['Denda belum lunas', rupiah($totalDenda - (int) $d['lunas']), 'Sudah lunas ' . rupiah((int) $d['lunas'])],
+    ]);
+    if (!$perBulan) {
+        $pdf->bagian('Peminjaman per bulan');
+        $pdf->catatan('Tidak ada peminjaman pada periode ini.');
+    } else {
+        $pdf->bagian('Peminjaman per bulan');
+        $pdf->tabel([['Bulan', 140], ['', 462, 'B'], ['Total', 60, 'R'], ['Fisik', 60, 'R'], ['E-book', 60, 'R']],
+            array_map(fn($bulan, $r) => [substr(tgl($bulan . '-01', true), 2), $r['jumlah'] / $puncak, (string) (int) $r['jumlah'], (string) (int) $r['fisik'], (string) ((int) $r['jumlah'] - (int) $r['fisik'])],
+                array_keys($perBulan), $perBulan));
+        $pdf->bagian('Buku paling sering dipinjam');
+        $pdf->tabel([['Judul', 400], ['Penulis', 262], ['Dipinjam', 60, 'R'], ['Fisik', 60, 'R']],
+            array_map(fn($b) => [$b['judul'], $b['penulis'], $b['jumlah'] . '×', (string) (int) $b['fisik']], $bukuTeratas));
+        $pdf->bagian('Anggota paling aktif');
+        $pdf->tabel([['Nama', 400], ['No. anggota', 262], ['Meminjam', 60, 'R'], ['Terlambat', 60, 'R']],
+            array_map(fn($a) => [$a['nama'], $a['no_anggota'], $a['jumlah'] . '×', (string) (int) $a['telat']], $anggotaTeratas));
+        $pdf->bagian('Rincian transaksi');
+        $pdf->tabel([['Pinjam', 60], ['No. anggota', 62], ['Nama', 120], ['Judul', 214], ['Format', 56], ['Jatuh tempo', 60], ['Kembali', 60], ['Kondisi', 42], ['Denda', 56, 'R'], ['Status', 52]],
+            array_map(function ($r) {
+                $total = (int) $r['denda'] + (int) $r['denda_kondisi'];
+                return [tgl($r['tgl_ambil']), $r['no_anggota'], $r['nama'], $r['judul'], LABEL_FORMAT[$r['format']], tgl($r['jatuh_tempo']), tgl($r['tgl_kembali']), $r['kondisi'] ?? '—',
+                    $total ? rupiah($total) : '—', !$total ? '—' : ($r['denda_lunas'] ? 'Lunas' : 'Belum lunas')];
+            }, $rincian));
+    }
+    $isi = $pdf->selesai();
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="laporan-perpustakaan-' . $dari . '-sd-' . $sampai . '.pdf"');
+    header('Content-Length: ' . strlen($isi));
+    echo $isi;
+    exit;
+}
+
 $judul = 'Laporan';
 $admin = true;
 $menu = 'laporan';
+$live = true;
 require __DIR__ . '/../partials/header.php';
 ?>
 
@@ -68,17 +101,17 @@ require __DIR__ . '/../partials/header.php';
   <div class="admin__head">
     <div>
       <h1>Laporan</h1>
-      <p class="muted">Periode <?= tgl($dari, true) ?> – <?= tgl($sampai, true) ?></p>
+      <p class="muted">Periode <?= tgl($dari, true) ?> – <?= tgl($sampai, true) ?> · Sekarang <time data-jam="<?= time() * 1000 ?>"><?= $sekarang ?></time></p>
     </div>
     <div class="report-actions">
-      <a class="btn btn--ghost" href="<?= url('admin/laporan.php?' . http_build_query(['dari' => $dari, 'sampai' => $sampai, 'unduh' => 'csv'])) ?>">Unduh CSV</a>
+      <a class="btn btn--ghost" href="<?= url('admin/laporan.php?' . http_build_query(['dari' => $dari, 'sampai' => $sampai, 'unduh' => 'pdf'])) ?>">Unduh PDF</a>
       <button class="btn" type="button" data-print>Cetak</button>
     </div>
   </div>
 
   <form class="form panel report-filter">
-    <div class="field"><label for="dari">Dari tanggal</label><input id="dari" name="dari" type="date" value="<?= e($dari) ?>"></div>
-    <div class="field"><label for="sampai">Sampai tanggal</label><input id="sampai" name="sampai" type="date" value="<?= e($sampai) ?>"></div>
+    <div class="field"><label for="dari">Dari tanggal</label><input id="dari" name="dari" type="date" max="<?= $hariIni ?>" value="<?= e($dari) ?>"></div>
+    <div class="field"><label for="sampai">Sampai tanggal</label><input id="sampai" name="sampai" type="date" max="<?= $hariIni ?>" value="<?= e($sampai) ?>"></div>
     <button class="btn btn--sm">Tampilkan</button>
   </form>
 

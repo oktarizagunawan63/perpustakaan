@@ -4,13 +4,17 @@ $u = user();
 [$buka, $statusLayanan] = status_layanan();
 $menu ??= '';
 $admin ??= false;
+// Hasil POST tidak ikut diperbarui otomatis supaya pesan galat dan isian formulir tidak hilang
+$live = ($live ?? false) && $u && $_SERVER['REQUEST_METHOD'] === 'GET';
 $navAktif = fn(string $k) => $menu === $k ? ' aria-current="page"' : '';
 // Angka di menu "Pinjaman saya": jumlah pinjaman aktif, merah bila ada buku fisik terlambat yang belum diserahkan
 [$jmlPinjam, $jmlTelat] = $u && $u['role'] !== 'admin'
     ? array_map('intval', q('SELECT COUNT(*), COALESCE(SUM(format = "fisik" AND tgl_ajuan IS NULL AND jatuh_tempo < CURDATE()), 0)
                              FROM peminjaman WHERE user_id = ? AND tgl_kembali IS NULL', [$u['id']])->fetch(PDO::FETCH_NUM))
     : [0, 0];
-// Angka di menu petugas: pesanan + buku yang menunggu dicek (Sirkulasi), usulan baru (Usulan)
+// Pemberitahuan yang belum ditutup anggota, ditandai merah di menu "Pinjaman saya"
+$jmlPesan = $u && $u['role'] !== 'admin' ? (int) q('SELECT COUNT(*) FROM pemberitahuan WHERE user_id = ? AND dibaca IS NULL', [$u['id']])->fetchColumn() : 0;
+// Angka di menu petugas: permintaan, pesanan, dan buku yang menunggu dicek (Sirkulasi), usulan baru (Usulan)
 $jmlMenunggu = $admin ? (int) q('SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND (tgl_ambil IS NULL OR tgl_ajuan IS NOT NULL)')->fetchColumn() : 0;
 $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"')->fetchColumn() : 0;
 ?>
@@ -26,7 +30,7 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
 <link rel="stylesheet" href="<?= url('assets/style.css') ?>">
 <script src="<?= url('assets/app.js') ?>" defer></script>
 </head>
-<body class="<?= $admin ? 'is-admin' : '' ?>">
+<body class="<?= $admin ? 'is-admin' : '' ?>"<?= $live ? ' data-live="' . url('perubahan.php') . '" data-versi="' . versi_data($u) . '"' : '' ?>>
 <a class="skip" href="#isi">Langsung ke konten</a>
 
 <header class="topbar">
@@ -47,7 +51,8 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
           <a href="<?= url('admin/index.php') ?>"<?= $admin ? ' aria-current="page"' : '' ?>>Panel petugas</a>
         <?php else: ?>
           <a href="<?= url('pinjaman.php') ?>"<?= $navAktif('pinjaman') ?>>Pinjaman saya<?php if ($jmlPinjam): ?>
-            <span class="nav__badge<?= $jmlTelat ? ' is-late' : '' ?>" title="<?= $jmlPinjam ?> buku dipinjam<?= $jmlTelat ? ", $jmlTelat terlambat" : '' ?>"><?= $jmlPinjam ?><span class="sr-only"> buku dipinjam<?= $jmlTelat ? ", $jmlTelat terlambat" : '' ?></span></span><?php endif ?></a>
+            <span class="nav__badge<?= $jmlTelat ? ' is-late' : '' ?>" title="<?= $jmlPinjam ?> buku dipinjam<?= $jmlTelat ? ", $jmlTelat terlambat" : '' ?>"><?= $jmlPinjam ?><span class="sr-only"> buku dipinjam<?= $jmlTelat ? ", $jmlTelat terlambat" : '' ?></span></span><?php endif ?><?php if ($jmlPesan): ?>
+            <span class="nav__badge is-late" title="<?= $jmlPesan ?> pemberitahuan baru">!<span class="sr-only"> <?= $jmlPesan ?> pemberitahuan baru</span></span><?php endif ?></a>
           <a href="<?= url('akun.php') ?>"<?= $navAktif('akun') ?>>Akun saya</a>
         <?php endif ?>
         <a href="<?= url('logout.php') ?>">Keluar</a>
@@ -63,7 +68,7 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
     <div class="wrap subnav__in" aria-label="Panel petugas">
       <a href="<?= url('admin/index.php') ?>"<?= $navAktif('dash') ?>>Ringkasan</a>
       <a href="<?= url('admin/sirkulasi.php') ?>"<?= $navAktif('sirkulasi') ?>>Sirkulasi<?php if ($jmlMenunggu): ?>
-        <span class="nav__badge is-late" title="<?= $jmlMenunggu ?> menunggu diambil atau dicek"><?= $jmlMenunggu ?><span class="sr-only"> menunggu diambil atau dicek</span></span><?php endif ?></a>
+        <span class="nav__badge is-late" title="<?= $jmlMenunggu ?> perlu ditangani"><?= $jmlMenunggu ?><span class="sr-only"> perlu ditangani</span></span><?php endif ?></a>
       <a href="<?= url('admin/denda.php') ?>"<?= $navAktif('denda') ?>>Denda</a>
       <a href="<?= url('admin/buku.php') ?>"<?= $navAktif('buku') ?>>Koleksi</a>
       <a href="<?= url('admin/kategori.php') ?>"<?= $navAktif('kategori') ?>>Kategori</a>

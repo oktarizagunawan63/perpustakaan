@@ -36,6 +36,7 @@ $rincian = fn(array $p) => implode(' + ', array_filter([
 $judul = 'Denda';
 $admin = true;
 $menu = 'denda';
+$live = true;
 require __DIR__ . '/../partials/header.php';
 ?>
 
@@ -65,15 +66,15 @@ require __DIR__ . '/../partials/header.php';
       <p class="muted"><?= $cari !== '' ? 'Tidak ada tagihan yang cocok.' : 'Tidak ada denda yang belum lunas.' ?></p>
     <?php else: ?>
       <div class="table-wrap">
-        <table class="table">
+        <table class="table table--stack">
           <thead><tr><th>Anggota</th><th>Buku</th><th>Rincian</th><th class="num">Jumlah</th><th></th></tr></thead>
           <tbody>
           <?php foreach ($belum as $p): $total = (int) $p['denda'] + (int) $p['denda_kondisi']; ?>
             <tr>
               <td><?= e($p['nama']) ?><span class="sub mono"><?= e($p['no_anggota']) ?></span></td>
               <td><?= e($p['judul']) ?><span class="sub">Selesai <?= tgl($p['tgl_kembali']) ?></span></td>
-              <td><?= e($rincian($p)) ?></td>
-              <td class="num"><?= rupiah($total) ?></td>
+              <td data-label="Rincian"><?= e($rincian($p)) ?></td>
+              <td class="num" data-label="Jumlah"><?= rupiah($total) ?></td>
               <td class="actions">
                 <form method="post" data-confirm="Tandai lunas denda <?= rupiah($total) ?> dari <?= e($p['nama']) ?>?">
                   <?= csrf_field() ?>

@@ -19,6 +19,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         session_regenerate_id(true);
         unset($akun['password']);
         $_SESSION['user'] = $akun;
+        if ($akun['role'] === 'anggota') {
+            foreach (pengingat($akun) as [$kls, $pesan]) flash(['late' => 'error', 'soon' => 'info', 'ok' => 'ok'][$kls], $pesan);
+        }
         if ($lanjut) { header('Location: ' . $lanjut); exit; }
         redirect($akun['role'] === 'admin' ? 'admin/index.php' : 'akun.php');
     }

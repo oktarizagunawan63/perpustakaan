@@ -6,13 +6,13 @@ $kelas    = $_GET['kelas'] ?? '';
 $tersedia = !empty($_GET['tersedia']);
 $urut     = $_GET['urut'] ?? 'relevan';
 $hal      = max(1, (int) ($_GET['hal'] ?? 1));
-$perHal   = 10;
+$perHal   = 12;
 
 $where = [];
 $args = [];
 if ($cari !== '') {
-    $where[] = '(b.judul LIKE ? OR b.penulis LIKE ? OR b.penerbit LIKE ? OR b.isbn LIKE ? OR b.no_panggil LIKE ?)';
-    array_push($args, ...array_fill(0, 5, '%' . $cari . '%'));
+    $where[] = '(b.judul LIKE ? OR b.penulis LIKE ? OR b.penerbit LIKE ? OR b.isbn LIKE ? OR b.no_panggil LIKE ? OR b.daftar_isi LIKE ? OR b.sinopsis LIKE ?)';
+    array_push($args, ...array_fill(0, 7, '%' . $cari . '%'));
 }
 if ($kelas !== '') { $where[] = 'k.kode = ?'; $args[] = $kelas; }
 if ($tersedia)     { $where[] = 'b.stok > ' . SQL_DIPINJAM; }
@@ -35,8 +35,9 @@ $hasil = q("SELECT b.*, k.kode, k.nama kategori, b.stok - " . SQL_DIPINJAM . " A
             $whereSql ORDER BY $orderSql LIMIT $perHal OFFSET $offset", $args)->fetchAll();
 
 $daftarKelas = q('SELECT k.kode, k.nama, COUNT(b.id) jumlah FROM kategori k LEFT JOIN buku b ON b.kategori_id = k.id
-                  GROUP BY k.id ORDER BY k.kode')->fetchAll();
+                  GROUP BY k.id HAVING jumlah > 0 ORDER BY k.nama')->fetchAll();
 $namaKelas = array_column($daftarKelas, 'nama', 'kode');
+$semua = array_sum(array_column($daftarKelas, 'jumlah'));
 
 // Tandai kata kunci di hasil (input sudah di-escape lebih dulu)
 $sorot = function (string $teks) use ($cari): string {
@@ -52,81 +53,70 @@ require __DIR__ . '/partials/header.php';
 
 <div class="page-head">
   <div class="wrap">
-    <h1>Katalog koleksi</h1>
+    <h1>Katalog buku</h1>
     <form class="search" action="<?= url('katalog.php') ?>" role="search">
       <label class="sr-only" for="q">Kata kunci</label>
-      <input id="q" name="q" type="search" value="<?= e($cari) ?>" placeholder="Judul, penulis, penerbit, ISBN, atau nomor panggil">
+      <input id="q" name="q" type="search" value="<?= e($cari) ?>" placeholder="Cari judul, penulis, atau topik (mis. antibiotik)">
       <?php if ($kelas !== ''): ?><input type="hidden" name="kelas" value="<?= e($kelas) ?>"><?php endif ?>
       <button class="btn" type="submit">Cari</button>
     </form>
   </div>
 </div>
 
-<div class="wrap catalog">
-  <form class="filters" action="<?= url('katalog.php') ?>" data-autosubmit>
+<div class="wrap catalog2">
+  <form class="catalog-bar" action="<?= url('katalog.php') ?>" data-autosubmit>
     <input type="hidden" name="q" value="<?= e($cari) ?>">
-    <fieldset>
-      <legend>Kelas</legend>
-      <label class="radio"><input type="radio" name="kelas" value=""<?= $kelas === '' ? ' checked' : '' ?>> Semua kelas</label>
+    <fieldset class="chips">
+      <legend class="sr-only">Kategori</legend>
+      <label class="chip"><input type="radio" name="kelas" value=""<?= $kelas === '' ? ' checked' : '' ?>><span>Semua <small><?= $semua ?></small></span></label>
       <?php foreach ($daftarKelas as $k): ?>
-        <label class="radio<?= $k['jumlah'] ? '' : ' is-empty' ?>">
-          <input type="radio" name="kelas" value="<?= e($k['kode']) ?>"<?= $kelas === $k['kode'] ? ' checked' : '' ?>>
-          <span class="callno"><?= e($k['kode']) ?></span> <?= e($k['nama']) ?>
-          <span class="count"><?= (int) $k['jumlah'] ?></span>
-        </label>
+        <label class="chip"><input type="radio" name="kelas" value="<?= e($k['kode']) ?>"<?= $kelas === $k['kode'] ? ' checked' : '' ?>><span><?= e($k['nama']) ?> <small><?= (int) $k['jumlah'] ?></small></span></label>
       <?php endforeach ?>
     </fieldset>
-    <fieldset>
-      <legend>Ketersediaan</legend>
-      <label class="check"><input type="checkbox" name="tersedia" value="1"<?= $tersedia ? ' checked' : '' ?>> Hanya yang ada di rak</label>
-    </fieldset>
-    <fieldset>
-      <legend><label for="urut">Urutkan</label></legend>
+    <div class="catalog-bar__tools">
+      <label class="switch"><input type="checkbox" name="tersedia" value="1"<?= $tersedia ? ' checked' : '' ?>><span>Buku fisik tersedia</span></label>
+      <label class="sr-only" for="urut">Urutkan</label>
       <select id="urut" name="urut">
-        <?php foreach (['relevan' => 'Paling sesuai', 'judul' => 'Judul A–Z', 'tahun' => 'Tahun terbit terbaru', 'terbaru' => 'Baru ditambahkan'] as $v => $l): ?>
+        <?php foreach (['relevan' => 'Urutkan: paling sesuai', 'judul' => 'Urutkan: judul A–Z', 'tahun' => 'Urutkan: terbit terbaru', 'terbaru' => 'Urutkan: baru ditambahkan'] as $v => $l): ?>
           <option value="<?= $v ?>"<?= $urut === $v ? ' selected' : '' ?>><?= $l ?></option>
         <?php endforeach ?>
       </select>
-    </fieldset>
-    <noscript><button class="btn btn--sm" type="submit">Terapkan</button></noscript>
+      <noscript><button class="btn btn--sm" type="submit">Terapkan</button></noscript>
+    </div>
   </form>
 
-  <section class="results" aria-live="polite">
+  <section aria-live="polite">
     <p class="results__meta">
-      <strong><?= $total ?></strong> judul<?= $cari !== '' ? ' untuk “' . e($cari) . '”' : '' ?><?= $kelas !== '' && isset($namaKelas[$kelas]) ? ' di kelas ' . e($kelas . ' ' . $namaKelas[$kelas]) : '' ?>
+      <strong><?= $total ?> buku</strong><?= $cari !== '' ? ' untuk “' . e($cari) . '”' : '' ?><?= isset($namaKelas[$kelas]) ? ' di ' . e($namaKelas[$kelas]) : '' ?><?= $tersedia ? ', buku fisiknya tersedia' : '' ?>
       <?php if ($cari !== '' || $kelas !== '' || $tersedia): ?>
-        · <a href="<?= url('katalog.php') ?>">Hapus semua filter</a>
+        · <a href="<?= url('katalog.php') ?>">Hapus filter</a>
       <?php endif ?>
     </p>
 
     <?php if (!$hasil): ?>
       <div class="empty">
         <h2>Belum ketemu.</h2>
-        <p>Coba kata kunci yang lebih pendek (misalnya nama belakang penulis saja), periksa ejaan, atau hapus filter kelas.</p>
-        <a class="btn btn--ghost" href="<?= url('katalog.php') ?>">Lihat seluruh koleksi</a>
+        <p>Coba kata kunci yang lebih pendek (misalnya nama belakang penulis saja), periksa ejaan, atau pilih kategori “Semua”.</p>
+        <a class="btn btn--ghost" href="<?= url('katalog.php') ?>">Lihat semua buku</a>
       </div>
     <?php else: ?>
-      <ol class="result-list" start="<?= $offset + 1 ?>">
-        <?php foreach ($hasil as $b): ?>
-          <li class="result">
-            <a href="<?= url('buku.php?id=' . $b['id']) ?>" tabindex="-1"><?= sampul($b, 'sm') ?></a>
-            <div class="result__body">
-              <h2 class="result__title"><a href="<?= url('buku.php?id=' . $b['id']) ?>"><?= $sorot($b['judul']) ?></a></h2>
-              <p class="result__by"><?= $sorot($b['penulis']) ?></p>
-              <p class="result__meta"><?= $sorot($b['penerbit']) ?>, <?= (int) $b['tahun'] ?> · <?= e($b['bahasa']) ?></p>
-            </div>
-            <div class="result__loc">
-              <?php if ($b['tersedia'] > 0): ?>
-                <span class="avail avail--yes">Tersedia <?= (int) $b['tersedia'] ?> dari <?= (int) $b['stok'] ?></span>
-              <?php else: ?>
-                <span class="avail avail--no">Semua sedang dipinjam</span>
-              <?php endif ?>
-              <span class="callno"><?= e($b['no_panggil']) ?></span>
-              <span class="muted small">Rak <?= e($b['rak']) ?></span>
+      <ul class="book-grid">
+        <?php foreach ($hasil as $b): $link = url('buku.php?id=' . $b['id']); ?>
+          <li class="book-card">
+            <a class="book-card__cover" href="<?= $link ?>" tabindex="-1" aria-hidden="true"><?= sampul($b) ?>
+              <?php if ($b['file_pdf']): ?><span class="book-card__flag">E-book</span><?php endif ?></a>
+            <div class="book-card__body">
+              <span class="book-card__cat"><?= e($b['kategori']) ?></span>
+              <h2 class="book-card__title"><a href="<?= $link ?>"><?= $sorot($b['judul']) ?></a></h2>
+              <p class="book-card__by"><?= implode(' · ', array_filter([$sorot($b['penulis']), $b['tahun'] ? (int) $b['tahun'] : ''])) ?></p>
+              <p class="book-card__status <?= $b['tersedia'] > 0 || $b['file_pdf'] ? 'is-yes' : 'is-no' ?>">
+                <?= $b['tersedia'] > 0 ? 'Fisik ' . (int) $b['tersedia'] . ' dari ' . (int) $b['stok'] . ' tersedia' : ($b['file_pdf'] ? 'Fisik habis · e-book tersedia' : 'Sedang dipinjam semua') ?>
+              </p>
+              <a class="btn btn--sm btn--block book-card__cta" href="<?= $link ?>"><?= $b['tersedia'] > 0 || $b['file_pdf'] ? 'Lihat & pinjam' : 'Lihat detail' ?></a>
             </div>
           </li>
         <?php endforeach ?>
-      </ol>
+      </ul>
 
       <?php if ($jumlahHal > 1): ?>
         <nav class="pager" aria-label="Halaman hasil">

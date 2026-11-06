@@ -3,7 +3,7 @@ require __DIR__ . '/config.php';
 
 $stat = q('SELECT COUNT(*) judul, COALESCE(SUM(stok),0) eksemplar FROM buku')->fetch();
 $dipinjam = (int) q('SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL')->fetchColumn();
-$terbaru = q('SELECT id, judul, penulis, no_panggil FROM buku ORDER BY dibuat DESC, id DESC LIMIT 8')->fetchAll();
+$terbaru = q('SELECT id, judul, penulis, no_panggil, sampul FROM buku ORDER BY dibuat DESC, id DESC LIMIT 8')->fetchAll();
 $kelas = q('SELECT k.kode, k.nama, COUNT(b.id) jumlah FROM kategori k LEFT JOIN buku b ON b.kategori_id = k.id
             GROUP BY k.id ORDER BY k.kode')->fetchAll();
 [$buka, $statusLayanan] = status_layanan();
@@ -27,10 +27,10 @@ require __DIR__ . '/partials/header.php';
       <button class="btn" type="submit">Cari</button>
     </form>
     <p class="hero__hint">Sering dicari:
-      <a href="<?= url('katalog.php?q=metode+penelitian') ?>">metode penelitian</a>
-      <a href="<?= url('katalog.php?kelas=000') ?>">pemrograman</a>
-      <a href="<?= url('katalog.php?q=Pramoedya') ?>">Pramoedya</a>
-      <a href="<?= url('katalog.php?kelas=100') ?>">psikologi</a>
+      <a href="<?= url('katalog.php?kelas=615.7') ?>">farmakologi</a>
+      <a href="<?= url('katalog.php?q=farmakope') ?>">farmakope</a>
+      <a href="<?= url('katalog.php?q=herbal') ?>">herbal</a>
+      <a href="<?= url('katalog.php?q=pediatri') ?>">dosis anak</a>
     </p>
   </div>
 
@@ -88,16 +88,16 @@ require __DIR__ . '/partials/header.php';
     <h2>Cara meminjam</h2>
     <ol class="steps">
       <li>
-        <h3>Cari dan catat nomor panggil</h3>
-        <p>Cek di katalog apakah buku tersedia. Nomor panggil (mis. <code class="callno">005.1 MAR c</code>) menunjukkan letak buku di rak.</p>
+        <h3>Cari bukunya</h3>
+        <p>Cek di katalog apakah buku tersedia. Nomor panggil (mis. <code class="callno">615.7 KAT b</code>) menunjukkan letak buku di rak. Belum punya akun? <a href="<?= url('daftar.php') ?>">Daftar online</a>, aktif saat itu juga.</p>
       </li>
       <li>
-        <h3>Ambil, lalu ke meja sirkulasi</h3>
-        <p>Bawa buku dan kartu anggota ke petugas. Belum punya kartu? <a href="<?= url('daftar.php') ?>">Daftar online</a>, aktif saat itu juga.</p>
+        <h3>Klik “Pinjam buku ini”</h3>
+        <p>Pilih <strong>e-book</strong> (langsung dibaca di website) atau <strong>buku fisik</strong> (diambil di meja sirkulasi paling lambat <?= BATAS_AMBIL ?> hari setelah dipesan), lalu lama pinjam <?= implode(', ', array_slice(PILIHAN_LAMA, 0, -1)) ?>, atau <?= max(PILIHAN_LAMA) ?> hari.</p>
       </li>
       <li>
         <h3>Kembalikan tepat waktu</h3>
-        <p>Masa pinjam <?= LAMA_PINJAM ?> hari. Perpanjang sendiri <?= MAKS_PERPANJANG ?>× dari <a href="<?= url('akun.php') ?>">akun kamu</a> sebelum jatuh tempo.</p>
+        <p>E-book berakhir otomatis. Buku fisik diserahkan ke meja sirkulasi lalu dicek petugas; telat didenda <?= rupiah(DENDA_PER_HARI) ?>/hari, rusak <?= rupiah(DENDA_KONDISI['rusak']) ?>, hilang <?= rupiah(DENDA_KONDISI['hilang']) ?>. Cek semuanya di <a href="<?= url('pinjaman.php') ?>">Pinjaman saya</a>.</p>
       </li>
     </ol>
   </div>

@@ -16,6 +16,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('admin/anggota.php');
     }
 
+    if (isset($_POST['reset_sandi'])) {
+        $a = q('SELECT nama FROM users WHERE id = ? AND role = "anggota"', [(int) $_POST['reset_sandi']])->fetch();
+        if ($a) {
+            $sementara = bin2hex(random_bytes(4));
+            q('UPDATE users SET password = ? WHERE id = ?', [password_hash($sementara, PASSWORD_DEFAULT), (int) $_POST['reset_sandi']]);
+            flash('ok', 'Kata sandi sementara ' . $a['nama'] . ': ' . $sementara . ' — catat sekarang, pesan ini tampil sekali. Minta anggota menggantinya di Akun saya.');
+        }
+        redirect('admin/anggota.php');
+    }
+
     $in = array_merge($in, array_intersect_key($_POST, $in));
     [$akun, $galat] = daftarkan_anggota($_POST);
     if ($akun) {
@@ -28,7 +38,7 @@ $cari = trim($_GET['q'] ?? '');
 $args = $cari !== '' ? array_fill(0, 3, "%$cari%") : [];
 $daftar = q('SELECT u.*,
                (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL) aktif_pinjam,
-               (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL AND p.jatuh_tempo < CURDATE()) telat
+               (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL AND p.tgl_ajuan IS NULL AND p.format = "fisik" AND p.jatuh_tempo < CURDATE()) telat
              FROM users u WHERE u.role = "anggota" '
     . ($cari !== '' ? 'AND (u.nama LIKE ? OR u.email LIKE ? OR u.no_anggota LIKE ?) ' : '') . 'ORDER BY u.nama', $args)->fetchAll();
 
@@ -63,6 +73,10 @@ require __DIR__ . '/../partials/header.php';
               <td class="num"><?= (int) $a['aktif_pinjam'] ?: '—' ?><?= $a['telat'] ? ' <span class="tag tag--late">' . (int) $a['telat'] . ' telat</span>' : '' ?></td>
               <td><?= $a['aktif'] ? '<span class="tag tag--accent">Aktif</span>' : '<span class="tag">Nonaktif</span>' ?></td>
               <td class="actions">
+                <form method="post" data-confirm="Reset kata sandi <?= e($a['nama']) ?>? Kata sandi lamanya tidak berlaku lagi.">
+                  <?= csrf_field() ?>
+                  <button class="btn btn--sm btn--ghost" name="reset_sandi" value="<?= $a['id'] ?>">Reset sandi</button>
+                </form>
                 <form method="post"<?= $a['aktif'] ? ' data-confirm="Nonaktifkan ' . e($a['nama']) . '? Anggota tidak bisa masuk atau meminjam sampai diaktifkan lagi."' : '' ?>>
                   <?= csrf_field() ?>
                   <button class="btn btn--sm btn--ghost" name="status" value="<?= $a['id'] ?>"><?= $a['aktif'] ? 'Nonaktifkan' : 'Aktifkan' ?></button>

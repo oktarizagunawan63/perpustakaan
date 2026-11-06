@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             session_regenerate_id(true);
             unset($akun['password']);
             $_SESSION['user'] = $akun;
-            flash('ok', 'Selamat datang! Nomor anggotamu ' . $akun['no_anggota'] . '. Tunjukkan halaman ini di meja sirkulasi saat meminjam.');
+            flash('ok', 'Selamat datang! Nomor anggotamu ' . $akun['no_anggota'] . '. Sekarang kamu bisa langsung meminjam buku dari katalog.');
             redirect('akun.php');
         }
     }
@@ -34,7 +34,7 @@ require __DIR__ . '/partials/header.php';
   <h1 class="sr-only">Daftar anggota</h1>
 
   <form class="form auth__form" method="post" novalidate>
-    <p class="form__lead">Gratis untuk mahasiswa, dosen, dan staf. Nomor anggota langsung terbit — pinjam hingga <?= MAKS_PINJAM ?> buku selama <?= LAMA_PINJAM ?> hari.</p>
+    <p class="form__lead">Gratis untuk mahasiswa, dosen, dan staf. Nomor anggota langsung terbit — pinjam hingga <?= MAKS_PINJAM ?> buku selama <?= min(PILIHAN_LAMA) ?>–<?= max(PILIHAN_LAMA) ?> hari.</p>
     <?= csrf_field() ?>
     <?php if ($galat): ?><div class="notice notice--error" role="alert">Ada <?= count($galat) ?> isian yang perlu diperbaiki.</div><?php endif ?>
 

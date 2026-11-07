@@ -60,7 +60,7 @@ require __DIR__ . '/partials/header.php';
 <div class="wrap">
   <nav class="crumbs" aria-label="Jejak halaman">
     <a href="<?= url('katalog.php') ?>">Katalog</a> <span aria-hidden="true">/</span>
-    <a href="<?= url('katalog.php?kelas=' . $b['kode']) ?>"><?= e($b['kode'] . ' ' . $b['kategori']) ?></a>
+    <a href="<?= url('katalog.php?kelas=' . $b['kode']) ?>"><?= e($b['kategori']) ?></a>
   </nav>
 
   <article class="book">
@@ -175,7 +175,7 @@ require __DIR__ . '/partials/header.php';
         <div><dt>ISBN</dt><dd class="mono"><?= e($b['isbn'] ?: '—') ?></dd></div>
         <div><dt>Halaman</dt><dd><?= $b['halaman'] ? number_format((int) $b['halaman'], 0, ',', '.') . ' hlm.' : '—' ?></dd></div>
         <div><dt>Bahasa</dt><dd><?= e($b['bahasa']) ?></dd></div>
-        <div><dt>Kelas</dt><dd><a href="<?= url('katalog.php?kelas=' . $b['kode']) ?>"><?= e($b['kode'] . ' — ' . $b['kategori']) ?></a></dd></div>
+        <div><dt>Kategori</dt><dd><a href="<?= url('katalog.php?kelas=' . $b['kode']) ?>"><?= e($b['kategori']) ?></a></dd></div>
       </dl>
     </div>
   </article>
@@ -184,7 +184,7 @@ require __DIR__ . '/partials/header.php';
     <section class="section section--tight">
       <div class="section__head">
         <h2>Satu rak dengan buku ini</h2>
-        <a class="link-arrow" href="<?= url('katalog.php?kelas=' . $b['kode']) ?>">Semua di kelas <?= e($b['kode']) ?></a>
+        <a class="link-arrow" href="<?= url('katalog.php?kelas=' . $b['kode']) ?>">Semua di kategori ini</a>
       </div>
       <ul class="shelf">
         <?php foreach ($serupa as $s): ?>

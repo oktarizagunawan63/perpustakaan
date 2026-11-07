@@ -66,14 +66,13 @@ require __DIR__ . '/partials/header.php';
 <section class="section section--alt">
   <div class="wrap split">
     <div>
-      <h2>Jelajahi menurut kelas</h2>
-      <p class="muted">Koleksi disusun dengan Klasifikasi Desimal Dewey — angka yang sama dengan label di punggung buku dan papan rak.</p>
+      <h2>Jelajahi menurut kategori</h2>
+      <p class="muted">Pilih topik yang kamu cari.</p>
     </div>
     <ol class="ddc">
       <?php foreach ($kelas as $k): ?>
         <li>
           <a href="<?= url('katalog.php?kelas=' . $k['kode']) ?>">
-            <span class="ddc__code"><?= e($k['kode']) ?></span>
             <span class="ddc__name"><?= e($k['nama']) ?></span>
             <span class="ddc__count"><?= (int) $k['jumlah'] ?></span>
           </a>

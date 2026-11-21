@@ -64,7 +64,6 @@ require __DIR__ . '/partials/header.php';
   </nav>
 
   <article class="book">
-    <div class="book__cover"><?= sampul($b, 'lg') ?></div>
 
     <div class="book__main">
       <h1 class="book__title"><?= e($b['judul']) ?></h1>

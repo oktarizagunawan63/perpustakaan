@@ -50,7 +50,7 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
 
     <nav class="nav" id="nav" aria-label="Utama">
       <a href="<?= url('katalog.php') ?>"<?= $navAktif('katalog') ?>>Katalog</a>
-      <a href="<?= url('index.php#cara-pinjam') ?>">Cara meminjam</a>
+      <a href="<?= url('katalog.php#cara-pinjam') ?>">Cara meminjam</a>
       <span class="nav__sep" aria-hidden="true"></span>
       <?php if ($u): ?>
         <?php if ($u['role'] === 'admin'): ?>

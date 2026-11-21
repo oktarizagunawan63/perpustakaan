@@ -62,7 +62,6 @@ require __DIR__ . '/partials/header.php';
 
   <div class="loan-form">
     <aside class="loan-form__book">
-      <?= sampul($b, 'md') ?>
       <div>
         <h2 class="loan-form__title"><?= e($b['judul']) ?></h2>
         <p class="muted small"><?= e($b['penulis']) ?></p>

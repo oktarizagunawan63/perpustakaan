@@ -1,6 +1,12 @@
 <?php
 require __DIR__ . '/config.php';
 
+// Kalau sudah login, langsung redirect — jangan tampilkan form login lagi
+if (user()) {
+    $u = user();
+    redirect($u['role'] === 'admin' ? 'admin/index.php' : 'akun.php');
+}
+
 $lanjut = $_GET['lanjut'] ?? $_POST['lanjut'] ?? '';
 // Hanya izinkan path lokal agar tidak bisa dipakai untuk open redirect
 if (!preg_match('#^/(?!/)#', $lanjut)) $lanjut = '';

@@ -1,483 +1,444 @@
 <?php
-declare(strict_types=1);
-
-session_start();
-date_default_timezone_set('Asia/Jakarta');
-
-// --- Sesuaikan dengan server lokal ---
-const DB_HOST = '127.0.0.1';
-const DB_PORT = 3306;
-const DB_NAME = 'db_perpustakaan';
-const DB_USER = 'root';
-const DB_PASS = '';
-
-// --- Aturan layanan ---
-const NAMA_PERPUS     = 'Perpustakaan Kampus';
-const PILIHAN_LAMA    = [3, 7, 14]; // pilihan lama pinjam (hari)
-const LAMA_PINJAM     = 7;          // pilihan bawaan
-const MAKS_PINJAM     = 3;     // buku aktif per anggota
-const MAKS_PERPANJANG = 1;
-const DENDA_PER_HARI  = 1000;  // rupiah, per buku per hari terlambat
-// Denda kondisi buku saat dikembalikan (rupiah). Hilang: atau mengganti dengan buku yang sama.
-const DENDA_KONDISI   = ['baik' => 0, 'rusak' => 50000, 'hilang' => 150000];
-const BATAS_AMBIL     = 2;     // hari: buku fisik harus diambil setelah disetujui petugas, lewat itu batal otomatis
-const BATAS_GILIRAN   = 2;     // hari: eksemplar disimpan untuk anggota yang mendapat giliran antrean
-const DIR_FOTO        = __DIR__ . '/assets/foto/';
-
-// Jam layanan per hari (1 = Senin ... 7 = Minggu), null = tutup
-const JAM_LAYANAN = [
-    1 => ['08:00', '20:00'], 2 => ['08:00', '20:00'], 3 => ['08:00', '20:00'],
-    4 => ['08:00', '20:00'], 5 => ['08:00', '16:30'], 6 => ['09:00', '14:00'], 7 => null,
-];
-
-// Link relatif agar jalan di subfolder htdocs maupun `php -S`
-define('BASE', basename(dirname($_SERVER['SCRIPT_FILENAME'])) === 'admin' ? '..' : '.');
-
-function url(string $path = ''): string { return BASE . '/' . $path; }
-
-function db(): PDO
-{
-    static $pdo;
-    if (!$pdo) {
-        try {
-            $pdo = new PDO('mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            ]);
-        } catch (PDOException $e) {
-            http_response_code(500);
-            exit('<p style="font:16px sans-serif;padding:2rem">Database belum tersambung. Jalankan MySQL dan import <code>database.sql</code>, lalu cek pengaturan di <code>config.php</code>.</p>');
-        }
-        rawat_data();
-    }
-    return $pdo;
+// Start session dengan nama berbeda per port agar tidak bentrok
+if (session_status() === PHP_SESSION_NONE) {
+    $port = $_SERVER['SERVER_PORT'] ?? '80';
+    session_name('PERPUSTAKAAN_' . $port); // Session berbeda per port
+    session_start();
 }
 
-/** Perawatan otomatis tiap permintaan: e-book kedaluwarsa, pesanan tak diambil, dan antrean. */
-function rawat_data(): void
-{
-    // E-book berakhir otomatis setelah tanggal jatuh tempo, tanpa denda
-    q("UPDATE peminjaman SET tgl_kembali = jatuh_tempo, kondisi = 'baik'
-       WHERE format = 'ebook' AND tgl_kembali IS NULL AND jatuh_tempo < CURDATE()");
-    // Pesanan yang sudah disetujui tapi tidak diambil dibatalkan, eksemplarnya kembali tersedia, anggotanya diberi tahu
-    $lewat = "p.format = 'fisik' AND p.tgl_ambil IS NULL AND p.tgl_kembali IS NULL AND p.tgl_setuju < CURDATE() - INTERVAL " . BATAS_AMBIL . ' DAY';
-    if (q("SELECT 1 FROM peminjaman p WHERE $lewat LIMIT 1")->fetch()) {
-        // FOR UPDATE: dasbor yang memantau bersamaan tidak boleh mengirim pemberitahuan ganda
-        db()->beginTransaction();
-        foreach (q("SELECT p.id, p.user_id, b.judul FROM peminjaman p JOIN buku b ON b.id = p.buku_id WHERE $lewat FOR UPDATE")->fetchAll() as $p) {
-            q('INSERT INTO pemberitahuan (user_id, pesan) VALUES (?, ?)', [$p['user_id'], 'Pesanan buku fisik “' . $p['judul'] . '” batal otomatis karena tidak diambil dalam ' . BATAS_AMBIL . ' hari setelah disetujui.']);
-            q('DELETE FROM peminjaman WHERE id = ?', [$p['id']]);
-        }
-        db()->commit();
-    }
-    // Giliran antrean yang tidak dipakai hangus, anggotanya diberi tahu
-    $giliranLewat = 'a.tgl_tersedia < CURDATE() - INTERVAL ' . BATAS_GILIRAN . ' DAY';
-    if (q("SELECT 1 FROM antrean a WHERE $giliranLewat LIMIT 1")->fetch()) {
-        db()->beginTransaction();
-        foreach (q("SELECT a.id, a.user_id, b.judul FROM antrean a JOIN buku b ON b.id = a.buku_id WHERE $giliranLewat FOR UPDATE")->fetchAll() as $a) {
-            q('INSERT INTO pemberitahuan (user_id, pesan) VALUES (?, ?)', [$a['user_id'], 'Giliran antrean buku fisik “' . $a['judul'] . '” hangus karena tidak dipinjam dalam ' . BATAS_GILIRAN . ' hari. Antre lagi bila masih membutuhkannya.']);
-            q('DELETE FROM antrean WHERE id = ?', [$a['id']]);
-        }
-        db()->commit();
-    }
-    // Eksemplar kosong diberikan ke antrean terdepan
-    foreach (q('SELECT DISTINCT buku_id FROM antrean WHERE tgl_tersedia IS NULL')->fetchAll(PDO::FETCH_COLUMN) as $bukuId) {
-        $kosong = (int) q('SELECT b.stok - ' . SQL_DIPINJAM . ' FROM buku b WHERE b.id = ?', [$bukuId])->fetchColumn();
-        if ($kosong > 0) {
-            q('UPDATE antrean SET tgl_tersedia = CURDATE() WHERE buku_id = ? AND tgl_tersedia IS NULL ORDER BY dibuat, id LIMIT ' . $kosong, [$bukuId]);
-        }
-    }
-}
+// Konfigurasi Database
+define('DB_HOST', 'localhost');
+define('DB_USER', 'root');
+define('DB_PASS', '');
+define('DB_NAME', 'db_perpustakaan');
+define('NAMA_PERPUS', 'Perpustakaan Kampus');
 
-function q(string $sql, array $args = []): PDOStatement
-{
-    $st = db()->prepare($sql);
-    $st->execute($args);
-    return $st;
-}
+// SQL untuk hitung antrian peminjaman buku yang sama
+define('SQL_DIANTRE', '(SELECT COUNT(*) FROM peminjaman p2 WHERE p2.buku_id = p.buku_id AND p2.tgl_kembali IS NULL AND p2.tgl_setuju IS NULL AND p2.id < p.id)');
+define('SQL_POSISI_ANTREAN', '(SELECT COUNT(*) FROM peminjaman p2 WHERE p2.buku_id = a.buku_id AND p2.tgl_kembali IS NULL AND p2.tgl_setuju IS NULL)');
 
-function e(?string $s): string { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
-
-function redirect(string $path): never { header('Location: ' . url($path)); exit; }
-
-// --- Flash message ---
-function flash(string $tipe, string $pesan): void { $_SESSION['flash'][] = [$tipe, $pesan]; }
-
-function flash_tampil(): string
-{
-    $html = '';
-    foreach ($_SESSION['flash'] ?? [] as [$tipe, $pesan]) {
-        $html .= '<div class="notice notice--' . e($tipe) . '" role="status">' . e($pesan) . '</div>';
-    }
-    unset($_SESSION['flash']);
-    return $html;
-}
-
-// --- CSRF ---
-function csrf_field(): string
-{
-    $_SESSION['csrf'] ??= bin2hex(random_bytes(16));
-    return '<input type="hidden" name="csrf" value="' . $_SESSION['csrf'] . '">';
-}
-
-function csrf_cek(): void
-{
-    $token = $_SESSION['csrf'] ?? '';
-    // Token kosong tidak boleh lolos (hash_equals('', '') bernilai true)
-    if ($token === '' || !hash_equals($token, (string) ($_POST['csrf'] ?? ''))) {
-        http_response_code(403);
-        exit('Sesi formulir kedaluwarsa. Muat ulang halaman lalu coba lagi.');
-    }
-}
-
-// --- Autentikasi ---
-function user(): ?array { return $_SESSION['user'] ?? null; }
-
-function wajib_login(): array
-{
-    if (!user()) {
-        flash('info', 'Masuk dulu untuk membuka halaman itu.');
-        redirect('login.php?lanjut=' . urlencode($_SERVER['REQUEST_URI']));
-    }
-    // Akun yang dinonaktifkan petugas langsung kehilangan sesi
-    if (!q('SELECT aktif FROM users WHERE id = ?', [user()['id']])->fetchColumn()) {
-        unset($_SESSION['user']);
-        flash('error', 'Akun kamu sedang dinonaktifkan. Hubungi petugas.');
-        redirect('login.php');
-    }
-    return user();
-}
-
-function wajib_admin(): array
-{
-    $u = wajib_login();
-    if ($u['role'] !== 'admin') { http_response_code(403); exit('Halaman ini khusus petugas.'); }
-    return $u;
-}
-
-// --- Format ---
-function rupiah(int $n): string { return 'Rp' . number_format($n, 0, ',', '.'); }
-
-function tgl(?string $tanggal, bool $panjang = false): string
-{
-    if (!$tanggal) return '—';
-    $bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    $bulanPanjang = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    $t = strtotime($tanggal);
-    return date('j', $t) . ' ' . ($panjang ? $bulanPanjang : $bulan)[date('n', $t) - 1] . ' ' . date('Y', $t);
-}
-
-/** Selisih hari kalender: positif = lewat dari $tanggal. */
-function selisih_hari(string $tanggal, ?string $terhadap = null): int
-{
-    return (int) ((strtotime($terhadap ?? date('Y-m-d')) - strtotime($tanggal)) / 86400);
-}
-
-function hitung_denda(string $jatuhTempo, ?string $kembali = null): int
-{
-    return max(0, selisih_hari($jatuhTempo, $kembali)) * DENDA_PER_HARI;
-}
-
-/** Status jatuh tempo pinjaman aktif → [kelas css, label]. */
-function status_tempo(string $jatuhTempo): array
-{
-    $lewat = selisih_hari($jatuhTempo);
-    if ($lewat > 0)  return ['late', "Terlambat $lewat hari"];
-    if ($lewat === 0) return ['soon', 'Kembalikan hari ini'];
-    if ($lewat >= -2) return ['soon', 'Kembali dalam ' . -$lewat . ' hari'];
-    return ['ok', 'Kembali dalam ' . -$lewat . ' hari'];
-}
-
-/** Denda keterlambatan sebuah pinjaman: e-book dan pesanan yang belum diambil tidak didenda; buku fisik dihitung sampai tanggal diserahkan. */
-function denda_pinjaman(array $p): int
-{
-    return $p['format'] === 'ebook' || !$p['tgl_ambil'] ? 0 : hitung_denda($p['jatuh_tempo'], $p['tgl_ajuan'] ?: null);
-}
-
-/** Batas terakhir mengambil buku fisik, dihitung sejak petugas menyetujui. */
-function batas_ambil(array $p): string
-{
-    return date('Y-m-d', strtotime($p['tgl_setuju'] . ' +' . BATAS_AMBIL . ' days'));
-}
-
-/** Batas terakhir memakai giliran antrean; lewat dari itu eksemplarnya pindah ke antrean berikutnya. */
-function batas_giliran(string $tglTersedia): string
-{
-    return date('Y-m-d', strtotime($tglTersedia . ' +' . BATAS_GILIRAN . ' days'));
-}
-
-/** Status pinjaman yang belum selesai → [kelas css, label]: menunggu persetujuan, siap diambil, menunggu dicek, atau sisa hari. */
-function status_pinjaman(array $p): array
-{
-    if (!$p['tgl_ambil']) return ['wait', $p['tgl_setuju'] ? 'Siap diambil sampai ' . tgl(batas_ambil($p)) : 'Menunggu persetujuan petugas'];
-    if ($p['tgl_ajuan']) return ['wait', 'Menunggu pengecekan petugas'];
-    [$kls, $lbl] = status_tempo($p['jatuh_tempo']);
-    if ($p['format'] === 'ebook') $lbl = str_replace(['Kembali dalam', 'Kembalikan hari ini'], ['Akses berakhir dalam', 'Akses berakhir hari ini'], $lbl);
-    return [$kls, $lbl];
-}
-
-const LABEL_FORMAT = ['fisik' => 'Buku fisik', 'ebook' => 'E-book'];
-// Alasan yang bisa dipilih petugas saat menolak atau membatalkan permintaan buku fisik
-const ALASAN_TOLAK = [
+// Konstanta lainnya
+define('MAKS_PINJAM', 3);
+define('MAKS_PERPANJANG', 1);
+define('DENDA_PER_HARI', 1000);
+define('BATAS_AMBIL', 3); // hari untuk mengambil buku setelah disetujui
+define('BATAS_GILIRAN', 3); // hari giliran antrean
+define('LABEL_FORMAT', ['fisik' => 'Buku fisik', 'ebook' => 'E-book']);
+define('PILIHAN_LAMA', [7, 14]); // pilihan durasi pinjam (hari)
+define('LAMA_PINJAM', 7); // durasi pinjam default (hari)
+define('DENDA_KONDISI', ['baik' => 0, 'rusak' => 25000, 'hilang' => 50000]);
+define('ALASAN_TOLAK', [
     'Buku tidak ditemukan di rak',
     'Eksemplar rusak atau sedang diperbaiki',
     'Buku hanya untuk dibaca di tempat',
     'Eksemplar dipakai untuk keperluan perpustakaan',
     'Data anggota perlu dicek di meja sirkulasi',
     'Lainnya',
-];
+]);
+define('DIR_FOTO', __DIR__ . '/assets/foto/');
+define('DIR_SAMPUL', __DIR__ . '/assets/sampul/');
+define('DIR_BERKAS', __DIR__ . '/berkas/');
 
-// --- Penanda formulir: * untuk isian wajib, (opsional) untuk yang boleh kosong ---
-function wajib(): string { return '<span class="req" title="Wajib diisi" aria-hidden="true">*</span>'; }
-function opsional(string $ket = ''): string { return '<span class="opt">(opsional' . ($ket !== '' ? ', ' . e($ket) : '') . ')</span>'; }
-function keterangan_wajib(): string { return '<p class="form__key"><span class="req" aria-hidden="true">*</span> Wajib diisi</p>'; }
+// SQL helper untuk menghitung buku yang dipinjam
+define('SQL_DIPINJAM', '(SELECT COUNT(*) FROM peminjaman WHERE buku_id = b.id AND tgl_kembali IS NULL AND format = "fisik")');
 
-function status_layanan(): array
-{
-    $jam = JAM_LAYANAN[(int) date('N')];
-    $now = date('H:i');
-    if ($jam && $now >= $jam[0] && $now < $jam[1]) return [true, 'Buka sekarang · tutup ' . str_replace(':', '.', $jam[1])];
-    if ($jam && $now < $jam[0]) return [false, 'Tutup · buka hari ini ' . str_replace(':', '.', $jam[0])];
-    return [false, 'Tutup sekarang'];
-}
+// Base URL - auto detect port
+$port = $_SERVER['SERVER_PORT'] ?? '80';
+$portStr = ($port == '80' || $port == '443') ? '' : ':' . $port;
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+define('BASE_URL', $protocol . '://localhost' . $portStr . '/');
 
-/** Lambang lingkaran + rak buku; warna ikut `currentColor`. */
-function logo(string $kelas = ''): string
-{
-    return '<svg class="logo ' . $kelas . '" viewBox="0 0 48 48" aria-hidden="true" fill="currentColor">'
-        . '<circle cx="24" cy="24" r="22.5" fill="none" stroke="currentColor" stroke-width="1.5"/>'
-        . '<rect x="14.5" y="12.5" width="3.4" height="20" rx=".6"/><rect x="20" y="15" width="3.4" height="17.5" rx=".6"/>'
-        . '<rect x="25.6" y="14" width="3.4" height="18.5" rx=".6" transform="rotate(-22 27.3 32.5)"/>'
-        . '<rect x="13" y="33.6" width="22" height="1.8" rx=".9"/></svg>';
-}
-
-/** Sampul asli (assets/sampul/) bila ada; selain itu sampul buatan CSS dengan warna tetap per judul. */
-function sampul(array $b, string $ukuran = 'md'): string
-{
-    if (!empty($b['sampul'])) {
-        return '<img class="cover cover--' . $ukuran . ' cover--foto" src="' . url('assets/sampul/' . rawurlencode($b['sampul']))
-            . '" alt="" loading="lazy">';
+// Koneksi PDO Database
+function pdo() {
+    static $pdo = null;
+    if ($pdo === null) {
+        try {
+            $pdo = new PDO(
+                'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
+                DB_USER,
+                DB_PASS,
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+            );
+        } catch (PDOException $e) {
+            die("Koneksi gagal: " . $e->getMessage());
+        }
     }
-    $warna = ['#0F3D35', '#1E5A4E', '#6E5B45', '#3F5B57', '#8A7A5E', '#2D4A44', '#5E6F64', '#4A3F36', '#26332F', '#7C6A4F'];
-    $c = $warna[crc32($b['judul']) % count($warna)];
-    $kelas = (string) strtok($b['no_panggil'] ?? '', ' ');
-    return '<div class="cover cover--' . $ukuran . '" style="--c:' . $c . '" aria-hidden="true">'
-        . '<span class="cover__no">' . e($kelas) . '</span>'
-        . '<span class="cover__judul">' . e($b['judul']) . '</span>'
-        . '<span class="cover__penulis">' . e($b['penulis']) . '</span></div>';
+    return $pdo;
 }
 
-/**
- * Validasi data anggota. $idSendiri diisi saat mengubah profil agar email sendiri tidak dianggap bentrok.
- * @return array{0: array<string,string>, 1: array<string,string>} [data bersih, galat per field]
- */
-function validasi_anggota(array $in, int $idSendiri = 0): array
-{
-    $d = ['nama' => trim($in['nama'] ?? ''), 'email' => strtolower(trim($in['email'] ?? '')), 'telepon' => trim($in['telepon'] ?? ''), 'username' => ltrim(trim($in['username'] ?? ''), '@')];
+// Query helper
+function q($sql, $params = []) {
+    $stmt = pdo()->prepare($sql);
+    $stmt->execute($params);
+    return $stmt;
+}
+
+// Get current user
+function user() {
+    return $_SESSION['user'] ?? null;
+}
+
+// Require admin role
+function wajib_admin() {
+    $user = user();
+    if (!$user || $user['role'] !== 'admin') {
+        redirect('login.php');
+    }
+}
+
+// Require anggota role
+function wajib_anggota() {
+    $user = user();
+    if (!$user || $user['role'] !== 'anggota') {
+        redirect('login.php');
+    }
+}
+
+// Require logged in
+function wajib_login() {
+    $user = user();
+    if (!$user) {
+        redirect('login.php');
+    }
+    return $user;
+}
+
+// URL helper
+function url($path = '') {
+    return BASE_URL . ltrim($path, '/');
+}
+
+// Escape HTML
+function e($text) {
+    return htmlspecialchars($text ?? '', ENT_QUOTES, 'UTF-8');
+}
+
+// CSRF token generation
+function csrf_field() {
+    if (!isset($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return '<input type="hidden" name="csrf_token" value="' . e($_SESSION['csrf_token']) . '">';
+}
+
+// CSRF validation
+function csrf_cek() {
+    if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || 
+        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        die('CSRF token tidak valid');
+    }
+}
+
+// Flash message
+function flash($type, $message) {
+    if (!isset($_SESSION['flash'])) {
+        $_SESSION['flash'] = [];
+    }
+    $_SESSION['flash'][] = ['type' => $type, 'message' => $message];
+}
+
+// Display flash messages
+function flash_tampil() {
+    if (!isset($_SESSION['flash'])) {
+        return '';
+    }
+    $html = '';
+    foreach ($_SESSION['flash'] as $flash) {
+        $type = is_array($flash['type']) ? $flash['type'][0] : $flash['type'];
+        $html .= '<div class="notice notice--' . e($type) . '" role="alert">' . e($flash['message']) . '</div>';
+    }
+    unset($_SESSION['flash']);
+    return $html;
+}
+
+// Redirect helper
+function redirect($path) {
+    header('Location: ' . url($path));
+    exit;
+}
+
+// Logo SVG
+function logo($class = '') {
+    return '<svg class="' . e($class) . '" viewBox="0 0 64 64" aria-hidden="true"><use href="' . url('assets/rak.svg#rak') . '"></use></svg>';
+}
+
+// Avatar placeholder
+function avatar($user, $size = 'md') {
+    if (!empty($user['foto']) && is_file(DIR_FOTO . $user['foto'])) {
+        return '<img src="' . url('assets/foto/' . $user['foto']) . '" alt="" class="avatar avatar--' . e($size) . '">';
+    }
+    $initial = strtoupper(substr($user['nama'] ?? $user['username'] ?? 'U', 0, 1));
+    return '<span class="avatar avatar--' . e($size) . '">' . e($initial) . '</span>';
+}
+
+// Sampul buku
+function sampul($buku, $size = 'md') {
+    if (!empty($buku['sampul']) && is_file(DIR_SAMPUL . $buku['sampul'])) {
+        return '<img src="' . url('assets/sampul/' . $buku['sampul']) . '" alt="" class="sampul sampul--' . e($size) . '">';
+    }
+    return '<span class="sampul sampul--' . e($size) . ' sampul--kosong" aria-label="Tidak ada sampul"></span>';
+}
+
+// Status layanan
+function status_layanan() {
+    // Default: layanan buka
+    return [true, 'Layanan buka'];
+}
+
+// Required field marker
+function wajib() {
+    return '<abbr class="wajib" title="wajib diisi" aria-label="wajib diisi">*</abbr>';
+}
+
+// Required field notice
+function keterangan_wajib() {
+    return '<p class="form__note"><abbr class="wajib" aria-hidden="true">*</abbr> Wajib diisi</p>';
+}
+
+// Pengingat untuk anggota
+function pengingat($user) {
+    return [];
+}
+
+// Versi data untuk live update
+function versi_data($user) {
+    // Pakai timestamp terbaru dari tabel peminjaman supaya hanya reload kalau ada perubahan data beneran
+    $v = q('SELECT MAX(GREATEST(COALESCE(UNIX_TIMESTAMP(tgl_pinjam),0), COALESCE(UNIX_TIMESTAMP(tgl_kembali),0), COALESCE(UNIX_TIMESTAMP(tgl_setuju),0), COALESCE(UNIX_TIMESTAMP(tgl_ambil),0))) FROM peminjaman')->fetchColumn();
+    return $v ?: '0';
+}
+
+// Cek akses baca isi buku (e-book atau sedang pinjam fisik)
+function akses_isi($user, $buku) {
+    // Kalau ada file PDF dan user login
+    if ($buku['file_pdf'] && $user) {
+        // Cek apakah sedang pinjam buku ini (fisik atau ebook)
+        $pinjam = q('SELECT id, format FROM peminjaman WHERE user_id = ? AND buku_id = ? AND tgl_kembali IS NULL AND jatuh_tempo >= CURDATE()', 
+                    [$user['id'], $buku['id']])->fetch();
+        if ($pinjam) {
+            return $pinjam;
+        }
+    }
+    return null;
+}
+
+// Hitung denda yang belum lunas
+function denda_belum_lunas($user_id) {
+    return (int) q('SELECT COALESCE(SUM(denda + denda_kondisi), 0) FROM peminjaman 
+                    WHERE user_id = ? AND tgl_kembali IS NOT NULL AND denda_lunas IS NULL', 
+                   [$user_id])->fetchColumn();
+}
+
+// Koneksi Database (mysqli untuk kompatibilitas)
+function getConnection() {
+    $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+    
+    if ($conn->connect_error) {
+        die("Koneksi gagal: " . $conn->connect_error);
+    }
+    
+    return $conn;
+}
+
+// Format tanggal Indonesia
+function tgl($date, $long = false) {
+    if (!$date) return '—';
+    $bulan = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+    $bulanPanjang = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    $hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    
+    $timestamp = is_numeric($date) ? $date : strtotime($date);
+    $d = date('j', $timestamp);
+    $m = (int)date('n', $timestamp);
+    $y = date('Y', $timestamp);
+    
+    if ($long) {
+        $namaHari = $hari[date('w', $timestamp)];
+        return "$namaHari, $d " . $bulanPanjang[$m] . " $y";
+    }
+    
+    return "$d " . $bulan[$m] . " $y";
+}
+
+// Format rupiah
+function rupiah($angka) {
+    return 'Rp' . number_format($angka, 0, ',', '.');
+}
+
+// Hitung denda pinjaman
+function denda_pinjaman($pinjaman) {
+    if (!$pinjaman['tgl_ajuan'] && $pinjaman['format'] === 'fisik') {
+        $terlambat = max(0, (strtotime('today') - strtotime($pinjaman['jatuh_tempo'])) / 86400);
+        return $terlambat * 1000; // Rp 1000 per hari
+    }
+    return 0;
+}
+
+// Status pinjaman
+function status_pinjaman($pinjaman) {
+    $hari = (strtotime($pinjaman['jatuh_tempo']) - strtotime('today')) / 86400;
+    if ($hari < 0) return ['late', 'Terlambat'];
+    if ($hari <= 2) return ['soon', 'Segera'];
+    return ['ok', 'Normal'];
+}
+
+// Selisih hari dari sekarang
+function selisih_hari($tanggal) {
+    return abs(floor((strtotime('today') - strtotime($tanggal)) / 86400));
+}
+
+// Validasi data anggota
+function validasi_anggota($data, $userId = null) {
+    $masukan = [
+        'nama' => trim($data['nama'] ?? ''),
+        'email' => trim($data['email'] ?? ''),
+        'username' => trim($data['username'] ?? ''),
+        'telepon' => trim($data['telepon'] ?? '')
+    ];
     $galat = [];
-    if (mb_strlen($d['nama']) < 3 || mb_strlen($d['nama']) > 100) $galat['nama'] = 'Isi nama lengkap (3–100 karakter).';
-    elseif (!preg_match("/^[\\p{L}][\\p{L} .,'\\-]*$/u", $d['nama'])) $galat['nama'] = 'Nama hanya boleh berisi huruf, spasi, titik, koma, tanda petik, atau strip.';
-    if ($d['email'] === '') $galat['email'] = 'Email wajib diisi.';
-    elseif (!filter_var($d['email'], FILTER_VALIDATE_EMAIL) || strlen($d['email']) > 120) $galat['email'] = 'Format email belum benar, contoh: nama@kampus.ac.id';
-    elseif (q('SELECT 1 FROM users WHERE email = ? AND id <> ?', [$d['email'], $idSendiri])->fetch()) $galat['email'] = $idSendiri ? 'Email ini sudah dipakai akun lain.' : 'Email ini sudah terdaftar. Coba masuk saja.';
-    if ($d['telepon'] !== '' && !preg_match('/^\+?[0-9 \-]{8,16}$/', $d['telepon'])) $galat['telepon'] = 'Nomor telepon hanya angka, 8–16 digit.';
-    if ($d['username'] !== '') {
-        if (!preg_match('/^[A-Za-z0-9._]{3,20}$/', $d['username'])) $galat['username'] = 'Username 3–20 karakter: huruf, angka, titik, atau garis bawah.';
-        elseif (q('SELECT 1 FROM users WHERE username = ? AND id <> ?', [$d['username'], $idSendiri])->fetch()) $galat['username'] = 'Username ini sudah dipakai.';
+    
+    if (mb_strlen($masukan['nama']) < 3) $galat['nama'] = 'Nama minimal 3 karakter.';
+    if (!filter_var($masukan['email'], FILTER_VALIDATE_EMAIL)) $galat['email'] = 'Format email tidak valid.';
+    
+    // Cek email duplikat
+    $cekEmail = q('SELECT id FROM users WHERE email = ? AND id != ?', [$masukan['email'], $userId ?? 0])->fetch();
+    if ($cekEmail) $galat['email'] = 'Email sudah terdaftar.';
+    
+    // Cek username duplikat jika diisi
+    if ($masukan['username'] !== '') {
+        if (mb_strlen($masukan['username']) < 3 || mb_strlen($masukan['username']) > 20) {
+            $galat['username'] = 'Username 3-20 karakter.';
+        } else {
+            $cekUsername = q('SELECT id FROM users WHERE username = ? AND id != ?', [$masukan['username'], $userId ?? 0])->fetch();
+            if ($cekUsername) $galat['username'] = 'Username sudah dipakai.';
+        }
     }
-    return [$d, $galat];
+    
+    return [$masukan, $galat];
 }
 
-/**
- * Foto dipotong persegi dari tengah lalu dibuat ulang jadi JPEG 256px: ukuran seragam dan isi selain gambar ikut terbuang.
- * @return array{0: ?string, 1: ?string} [nama file tersimpan, galat]
- */
-function simpan_foto(array $f): array
-{
-    if ($f['error'] === UPLOAD_ERR_NO_FILE) return [null, null];
-    if ($f['error'] !== UPLOAD_ERR_OK) return [null, 'Upload foto gagal. Coba file lain.'];
-    if ($f['size'] > 5 * 1024 * 1024) return [null, 'Foto maksimal 5 MB.'];
-    $info = @getimagesize($f['tmp_name']);
-    if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) return [null, 'Foto harus gambar JPG, PNG, atau WebP.'];
-    if ($info[0] * $info[1] > 40_000_000) return [null, 'Resolusi foto terlalu besar.'];
-    $src = @imagecreatefromstring(file_get_contents($f['tmp_name']));
-    if (!$src) return [null, 'Foto tidak bisa dibaca.'];
-    // Foto ponsel sering disimpan miring dengan penanda EXIF
-    if ($info[2] === IMAGETYPE_JPEG && function_exists('exif_read_data')) {
-        $putar = [3 => 180, 6 => -90, 8 => 90][@exif_read_data($f['tmp_name'])['Orientation'] ?? 1] ?? 0;
-        if ($putar) $src = imagerotate($src, $putar, 0);
-    }
-    $sisi = min(imagesx($src), imagesy($src));
-    $dst = imagecreatetruecolor(256, 256);
-    imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255)); // latar putih untuk PNG transparan
-    imagecopyresampled($dst, $src, 0, 0, intdiv(imagesx($src) - $sisi, 2), intdiv(imagesy($src) - $sisi, 2), 256, 256, $sisi, $sisi);
-    if (!is_dir(DIR_FOTO)) mkdir(DIR_FOTO);
-    $nama = bin2hex(random_bytes(12)) . '.jpg';
-    $ok = imagejpeg($dst, DIR_FOTO . $nama, 85);
-    imagedestroy($src);
-    imagedestroy($dst);
-    return $ok ? [$nama, null] : [null, 'Foto gagal disimpan.'];
-}
-
-/** Foto profil, atau huruf awal nama bila belum ada foto. */
-function avatar(array $u, string $ukuran = 'sm'): string
-{
-    if (!empty($u['foto'])) return '<img class="avatar avatar--' . $ukuran . '" src="' . url('assets/foto/' . rawurlencode($u['foto'])) . '" alt="">';
-    return '<span class="avatar avatar--' . $ukuran . '" aria-hidden="true">' . e(mb_strtoupper(mb_substr($u['nama'], 0, 1))) . '</span>';
-}
-
-/**
- * Validasi + simpan anggota baru (dipakai form daftar dan panel petugas).
- * @return array{0: ?array, 1: array<string,string>} [akun baru, galat per field]
- */
-function daftarkan_anggota(array $in): array
-{
-    [$d, $galat] = validasi_anggota($in);
-    $pw = $in['password'] ?? '';
-    if (strlen($pw) < 8) $galat['password'] = 'Kata sandi minimal 8 karakter.';
-    if (isset($in['password2']) && $pw !== $in['password2']) $galat['password2'] = 'Kedua kata sandi belum sama.';
+// Daftarkan anggota baru
+function daftarkan_anggota($data) {
+    [$masukan, $galat] = validasi_anggota($data);
+    
+    $password = trim($data['password'] ?? '');
+    if (strlen($password) < 8) $galat['password'] = 'Kata sandi minimal 8 karakter.';
+    
     if ($galat) return [null, $galat];
-
-    q('INSERT INTO users (no_anggota, nama, email, username, telepon, password) VALUES (?, ?, ?, ?, ?, ?)',
-        [uniqid('tmp'), $d['nama'], $d['email'], $d['username'] ?: null, $d['telepon'] ?: null, password_hash($pw, PASSWORD_DEFAULT)]);
-    $id = (int) db()->lastInsertId();
-    q('UPDATE users SET no_anggota = ? WHERE id = ?', [sprintf('AGT-%s%03d', date('y'), $id), $id]);
-    return [q('SELECT * FROM users WHERE id = ?', [$id])->fetch(), []];
+    
+    // Generate nomor anggota
+    $tahun = date('y');
+    $lastNo = q("SELECT no_anggota FROM users WHERE no_anggota LIKE 'AGT-$tahun%' ORDER BY no_anggota DESC LIMIT 1")->fetchColumn();
+    $urutan = $lastNo ? ((int) substr($lastNo, -3)) + 1 : 1;
+    $noAnggota = sprintf('AGT-%s%03d', $tahun, $urutan);
+    
+    q('INSERT INTO users (no_anggota, nama, email, telepon, password, role) VALUES (?, ?, ?, ?, ?, "anggota")',
+        [$noAnggota, $masukan['nama'], $masukan['email'], $masukan['telepon'] ?: null, password_hash($password, PASSWORD_DEFAULT)]);
+    
+    return [array_merge($masukan, ['no_anggota' => $noAnggota, 'id' => pdo()->lastInsertId()]), []];
 }
 
-/**
- * Boleh membuka isi buku (PDF)? Petugas selalu boleh; anggota hanya selama meminjam versi e-book-nya.
- * @return ?array pinjaman e-book aktif (anggota), [] untuk petugas, null bila tidak boleh
- */
-function akses_isi(?array $u, array $b): ?array
-{
-    if (!$u || empty($b['file_pdf'])) return null;
-    if ($u['role'] === 'admin') return [];
-    return q('SELECT * FROM peminjaman WHERE user_id = ? AND buku_id = ? AND format = "ebook" AND tgl_kembali IS NULL', [$u['id'], $b['id']])->fetch() ?: null;
-}
-
-/**
- * Catat peminjaman setelah semua aturan dicek. Dipakai halaman pinjam anggota dan sirkulasi petugas.
- * E-book tidak dibatasi stok; buku fisik dibatasi jumlah eksemplar.
- * @return array{0: bool, 1: string} [berhasil, pesan]
- */
-function catat_pinjaman(array $agt, int $bukuId, int $hari, string $format, bool $langsungDiambil = false): array
-{
-    if (!in_array($hari, PILIHAN_LAMA, true)) return [false, 'Pilih lama pinjam yang tersedia.'];
-    if (!isset(LABEL_FORMAT[$format])) return [false, 'Pilih format: buku fisik atau e-book.'];
-    $db = db();
-    $db->beginTransaction();
-    try {
-        // FOR UPDATE: dua peminjam tidak bisa mengambil eksemplar fisik terakhir bersamaan
-        $buku = q('SELECT b.*, b.stok - ' . SQL_DIPINJAM . ' AS tersedia FROM buku b WHERE b.id = ? FOR UPDATE', [$bukuId])->fetch();
-        $pinjam = q('SELECT buku_id, jatuh_tempo, format, tgl_ambil, tgl_ajuan FROM peminjaman WHERE user_id = ? AND tgl_kembali IS NULL', [$agt['id']])->fetchAll();
-        // Anggota yang sedang mendapat giliran antrean memakai eksemplar yang disimpan untuknya
-        $giliran = $buku && $format === 'fisik' && q('SELECT 1 FROM antrean WHERE user_id = ? AND buku_id = ? AND tgl_tersedia IS NOT NULL', [$agt['id'], $bukuId])->fetch();
-        $tunggakan = denda_belum_lunas((int) $agt['id']);
-        $galat = match (true) {
-            !$agt['aktif'] => $agt['nama'] . ' sedang dinonaktifkan.',
-            !$buku => 'Buku tidak ditemukan.',
-            $format === 'ebook' && !$buku['file_pdf'] => '“' . $buku['judul'] . '” belum punya versi e-book.',
-            $format === 'fisik' && $buku['tersedia'] + ($giliran ? 1 : 0) < 1 => 'Buku fisik “' . $buku['judul'] . '” sedang habis dipinjam.' . ($buku['file_pdf'] ? ' Versi e-book masih bisa dipinjam, atau ikut antrean.' : ' Ikut antrean supaya dapat giliran.'),
-            in_array($bukuId, array_map('intval', array_column($pinjam, 'buku_id')), true) => $agt['nama'] . ' masih meminjam judul ini.',
-            $tunggakan > 0 => $agt['nama'] . ' masih punya denda ' . rupiah($tunggakan) . ' yang belum lunas. Lunasi dulu di meja sirkulasi.',
-            count($pinjam) >= MAKS_PINJAM => $agt['nama'] . ' sudah meminjam ' . MAKS_PINJAM . ' buku (batas maksimal). Kembalikan salah satu dulu.',
-            (bool) array_filter($pinjam, fn($x) => $x['format'] === 'fisik' && $x['tgl_ambil'] && !$x['tgl_ajuan'] && $x['jatuh_tempo'] < date('Y-m-d'))
-                => $agt['nama'] . ' punya buku fisik yang terlambat. Kembalikan dulu ke meja sirkulasi.',
-            default => null,
-        };
-        if ($galat) {
-            $db->rollBack();
-            return [false, $galat];
-        }
-        // Buku fisik pesanan online menunggu persetujuan petugas; masa pinjamnya dihitung ulang saat diambil
-        $diambil = $format === 'ebook' || $langsungDiambil;
-        $tempo = date('Y-m-d', strtotime("+$hari days"));
-        $hariIni = $diambil ? date('Y-m-d') : null;
-        q('INSERT INTO peminjaman (user_id, buku_id, format, tgl_pinjam, tgl_setuju, tgl_ambil, jatuh_tempo, durasi) VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?)',
-            [$agt['id'], $bukuId, $format, $hariIni, $hariIni, $tempo, $hari]);
-        q('DELETE FROM antrean WHERE user_id = ? AND buku_id = ?', [$agt['id'], $bukuId]);
-        $db->commit();
-        $rak = $buku['rak'] !== '' ? ' (Rak ' . $buku['rak'] . ')' : '';
-        return [true, match (true) {
-            $format === 'ebook' => '“' . $buku['judul'] . '” (e-book) dipinjam selama ' . $hari . ' hari dan bisa dibaca sampai ' . tgl($tempo, true) . '.',
-            $diambil => '“' . $buku['judul'] . '” (buku fisik) dipinjam selama ' . $hari . ' hari, kembali paling lambat ' . tgl($tempo, true) . '.',
-            default => 'Permintaan pinjam “' . $buku['judul'] . '” terkirim. Tunggu persetujuan petugas, lalu ambil bukunya di meja sirkulasi' . $rak
-                . ' paling lambat ' . BATAS_AMBIL . ' hari setelah disetujui. Masa pinjam ' . $hari . ' hari dihitung sejak buku diambil.',
-        }];
-    } catch (Throwable $t) {
-        $db->rollBack();
-        throw $t;
+// Simpan foto upload
+function simpan_foto($file) {
+    if ($file['error'] === UPLOAD_ERR_NO_FILE) return [null, null];
+    if ($file['error'] !== UPLOAD_ERR_OK) return [null, 'Gagal mengunggah file.'];
+    if ($file['size'] > 2 * 1024 * 1024) return [null, 'Ukuran foto maksimal 2 MB.'];
+    
+    $mime = mime_content_type($file['tmp_name']);
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'])) {
+        return [null, 'Format foto harus JPG, PNG, atau WebP.'];
     }
-}
-
-/** Sidik data yang tampil di dasbor: berubah saat ada aksi baru, dipakai halaman untuk memperbarui diri. Anggota memantau datanya sendiri dan sisa stok fisik. */
-function versi_data(array $u): string
-{
-    $milik = $u['role'] === 'admin' ? [] : [$u['id']];
-    $saring = $milik ? 'WHERE user_id = ?' : '';
-    return md5(json_encode([
-        q("SELECT COUNT(*), COALESCE(MAX(id), 0), COUNT(tgl_setuju), COUNT(tgl_ambil), COUNT(tgl_ajuan), COUNT(tgl_kembali), COUNT(denda_lunas), COALESCE(SUM(perpanjang), 0) FROM peminjaman $saring", $milik)->fetch(PDO::FETCH_NUM),
-        q("SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(CRC32(CONCAT(status, COALESCE(catatan, '')))), 0) FROM usulan $saring", $milik)->fetch(PDO::FETCH_NUM),
-        q('SELECT COUNT(*), COALESCE(MAX(id), 0), COUNT(tgl_kembali) FROM peminjaman WHERE format = "fisik"')->fetch(PDO::FETCH_NUM),
-        q('SELECT COUNT(*), COALESCE(MAX(id), 0), COUNT(tgl_tersedia) FROM antrean')->fetch(PDO::FETCH_NUM),
-        q('SELECT COUNT(*), COALESCE(SUM(stok), 0) FROM buku')->fetch(PDO::FETCH_NUM),
-        q('SELECT COUNT(*), SUM(aktif) FROM users')->fetch(PDO::FETCH_NUM),
-    ]));
-}
-
-/** Total denda dari pinjaman yang sudah selesai tapi belum dibayar. */
-function denda_belum_lunas(int $userId): int
-{
-    return (int) q('SELECT COALESCE(SUM(denda + denda_kondisi), 0) FROM peminjaman
-                    WHERE user_id = ? AND tgl_kembali IS NOT NULL AND denda_lunas IS NULL', [$userId])->fetchColumn();
-}
-
-/**
- * Pengingat untuk anggota: siap diambil, jatuh tempo dekat, terlambat, giliran antrean, denda belum lunas.
- * @return list<array{0: string, 1: string, 2: string}> [kelas, pesan, tautan]
- */
-function pengingat(array $u): array
-{
-    $hasil = [];
-    $aktif = q('SELECT p.*, b.judul FROM peminjaman p JOIN buku b ON b.id = p.buku_id
-                WHERE p.user_id = ? AND p.tgl_kembali IS NULL AND p.tgl_ajuan IS NULL ORDER BY p.jatuh_tempo', [$u['id']])->fetchAll();
-    foreach ($aktif as $p) {
-        $judul = '“' . $p['judul'] . '”';
-        if (!$p['tgl_ambil']) {
-            if (!$p['tgl_setuju']) continue; // belum ada yang perlu dilakukan anggota
-            $hasil[] = ['soon', "Buku fisik $judul siap diambil di meja sirkulasi sampai " . tgl(batas_ambil($p)) . '.', 'pinjaman.php'];
-            continue;
-        }
-        $sisa = -selisih_hari($p['jatuh_tempo']);
-        if ($sisa < 0) {
-            $hasil[] = ['late', "$judul terlambat " . -$sisa . ' hari — denda berjalan ' . rupiah(denda_pinjaman($p)) . '.', 'pinjaman.php'];
-        } elseif ($sisa <= 1) {
-            $kapan = $sisa ? 'besok' : 'hari ini';
-            $hasil[] = ['soon', $p['format'] === 'ebook' ? "Akses e-book $judul berakhir $kapan." : "$judul jatuh tempo $kapan.", 'pinjaman.php'];
-        }
+    
+    $ext = match($mime) {
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp'
+    };
+    
+    $namaFile = uniqid('foto_') . '.' . $ext;
+    if (!is_dir(DIR_FOTO)) mkdir(DIR_FOTO, 0755, true);
+    
+    if (!move_uploaded_file($file['tmp_name'], DIR_FOTO . $namaFile)) {
+        return [null, 'Gagal menyimpan foto.'];
     }
-    foreach (q('SELECT a.tgl_tersedia, b.id, b.judul FROM antrean a JOIN buku b ON b.id = a.buku_id
-                WHERE a.user_id = ? AND a.tgl_tersedia IS NOT NULL', [$u['id']])->fetchAll() as $a) {
-        $sampai = tgl(batas_giliran($a['tgl_tersedia']));
-        $hasil[] = ['ok', "Giliranmu! Buku fisik “{$a['judul']}” disimpan untukmu sampai $sampai — pinjam sekarang.", 'pinjam.php?id=' . $a['id']];
-    }
-    if ($d = denda_belum_lunas((int) $u['id'])) {
-        $hasil[] = ['late', 'Denda ' . rupiah($d) . ' belum lunas. Bayar di meja sirkulasi supaya bisa meminjam lagi.', 'pinjaman.php#tagihan'];
-    }
-    return $hasil;
+    
+    return [$namaFile, null];
 }
 
-/** Kolom SQL urutan baris antrean `a` di antara yang masih menunggu judul yang sama. */
-const SQL_POSISI_ANTREAN = '((SELECT COUNT(*) FROM antrean x WHERE x.buku_id = a.buku_id AND x.tgl_tersedia IS NULL
-    AND (x.dibuat < a.dibuat OR (x.dibuat = a.dibuat AND x.id < a.id))) + 1)';
+// Opsional field marker
+function opsional() {
+    return '<span class="opsional">opsional</span>';
+}
 
-/** Kolom SQL jumlah anggota yang masih menunggu buku fisik dari pinjaman `p` (yang sudah dapat giliran tidak dihitung). */
-const SQL_DIANTRE = '(SELECT COUNT(*) FROM antrean a WHERE a.buku_id = p.buku_id AND a.tgl_tersedia IS NULL)';
+// Database helper (alias untuk PDO)
+function db() {
+    return pdo();
+}
 
-/**
- * Kolom SQL eksemplar fisik yang sedang terpakai: dipinjam, dipesan, menunggu dicek,
- * ditambah eksemplar yang disimpan untuk giliran antrean.
- */
-const SQL_DIPINJAM = '((SELECT COUNT(*) FROM peminjaman p WHERE p.buku_id = b.id AND p.format = "fisik" AND p.tgl_kembali IS NULL)
-    + (SELECT COUNT(*) FROM antrean a WHERE a.buku_id = b.id AND a.tgl_tersedia IS NOT NULL))';
+// Batas waktu ambil buku setelah disetujui
+function batas_ambil($pinjaman) {
+    return date('Y-m-d', strtotime($pinjaman['tgl_setuju'] . ' +' . BATAS_AMBIL . ' days'));
+}
+
+// Batas waktu giliran antrean
+function batas_giliran($tglTersedia) {
+    return date('Y-m-d', strtotime($tglTersedia . ' +' . BATAS_GILIRAN . ' days'));
+}
+
+// Hitung denda keterlambatan
+function hitung_denda($jatuhTempo, $sampai = null) {
+    $sampai = $sampai ? strtotime($sampai) : strtotime('today');
+    $terlambat = max(0, ($sampai - strtotime($jatuhTempo)) / 86400);
+    return (int) ($terlambat * DENDA_PER_HARI);
+}
+
+// Catat pinjaman baru
+function catat_pinjaman($user, $bukuId, $hari, $format, $admin = false) {
+    if (!in_array($hari, PILIHAN_LAMA)) $hari = LAMA_PINJAM;
+    if (!in_array($format, ['fisik', 'ebook'])) $format = 'fisik';
+
+    // Cek kuota
+    $jumlah = (int) q('SELECT COUNT(*) FROM peminjaman WHERE user_id = ? AND tgl_kembali IS NULL', [$user['id']])->fetchColumn();
+    if ($jumlah >= MAKS_PINJAM) return [false, 'Kuota pinjaman penuh (' . MAKS_PINJAM . ' buku). Kembalikan salah satu dulu.'];
+
+    // Cek tunggakan denda
+    if (denda_belum_lunas((int) $user['id'])) return [false, 'Ada denda yang belum lunas. Bayar dulu di meja sirkulasi.'];
+
+    // Cek sudah pinjam buku ini
+    if (q('SELECT 1 FROM peminjaman WHERE user_id = ? AND buku_id = ? AND tgl_kembali IS NULL', [$user['id'], $bukuId])->fetch()) {
+        return [false, 'Buku ini sudah sedang dipinjam.'];
+    }
+
+    $buku = q('SELECT b.*, b.stok - ' . SQL_DIPINJAM . ' AS tersedia FROM buku b WHERE b.id = ?', [$bukuId])->fetch();
+    if (!$buku) return [false, 'Buku tidak ditemukan.'];
+
+    if ($format === 'ebook') {
+        if (!$buku['file_pdf']) return [false, 'Buku ini tidak tersedia dalam format e-book.'];
+        // E-book: langsung aktif
+        $jatuh = date('Y-m-d', strtotime("+{$hari} days"));
+        q('INSERT INTO peminjaman (user_id, buku_id, format, durasi, tgl_pinjam, tgl_setuju, tgl_ambil, jatuh_tempo) VALUES (?, ?, "ebook", ?, CURDATE(), CURDATE(), CURDATE(), ?)',
+            [$user['id'], $bukuId, $hari, $jatuh]);
+        return [true, '"' . $buku['judul'] . '" (e-book) dipinjam ' . $hari . ' hari.'];
+    }
+
+    // Buku fisik: cek ketersediaan
+    $giliran = q('SELECT id FROM antrean WHERE user_id = ? AND buku_id = ? AND tgl_tersedia IS NOT NULL', [$user['id'], $bukuId])->fetch();
+    if ($buku['tersedia'] <= 0 && !$giliran) return [false, 'Stok buku fisik sedang habis.'];
+
+    if ($admin) {
+        // Admin: langsung ambil
+        $jatuh = date('Y-m-d', strtotime("+{$hari} days"));
+        q('INSERT INTO peminjaman (user_id, buku_id, format, durasi, tgl_pinjam, tgl_setuju, tgl_ambil, jatuh_tempo) VALUES (?, ?, "fisik", ?, CURDATE(), CURDATE(), CURDATE(), ?)',
+            [$user['id'], $bukuId, $hari, $jatuh]);
+    } else {
+        // Anggota: perlu persetujuan petugas, jatuh_tempo dihitung dari sekarang
+        $jatuh = date('Y-m-d', strtotime("+{$hari} days"));
+        q('INSERT INTO peminjaman (user_id, buku_id, format, durasi, tgl_pinjam, jatuh_tempo) VALUES (?, ?, "fisik", ?, CURDATE(), ?)',
+            [$user['id'], $bukuId, $hari, $jatuh]);
+    }
+
+    // Hapus dari antrean jika ada
+    if ($giliran) q('DELETE FROM antrean WHERE id = ?', [$giliran['id']]);
+
+    $aksi = $admin ? 'dipinjamkan' : 'dipesan';
+    return [true, '"' . $buku['judul'] . '" (fisik) ' . $aksi . ' untuk ' . $hari . ' hari.'];
+}

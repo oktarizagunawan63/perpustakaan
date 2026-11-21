@@ -193,7 +193,7 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 .ddc a:hover .ddc__name { color: var(--green-700); }
 
 .steps { list-style: none; counter-reset: s; margin: 2rem 0 0; padding: 0; display: grid; gap: 1.25rem; }
-@media (min-width: 860px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 860px) { .steps { grid-template-columns: repeat(4, 1fr); } }
 .steps li { counter-increment: s; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.75rem; }
 .steps li::before { content: counter(s); display: grid; place-items: center; width: 42px; height: 42px; border: 1.5px solid var(--green-800); border-radius: 50%; font-weight: 600; color: var(--green-800); margin-bottom: 1.1rem; }
 .steps p { color: var(--ink-2); margin: 0; font-size: .92rem; }
@@ -699,4 +699,86 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
   .table .table--stack .actions--stack form { display: inline-block; margin: 0 .4rem .4rem 0; }
   .table .table--stack .actions--stack .btn { width: auto; }
   .table--stack .row-form__kode { flex-basis: 100% !important; }
+}
+
+
+/* FIX RESPONSIVE - Detail Buku untuk Mobile */
+@media (max-width: 819px) {
+  .book {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+  .book__cover {
+    max-width: 200px !important;
+    width: 200px !important;
+    margin: 0 auto;
+    position: relative !important;
+    top: auto !important;
+  }
+  .book__main {
+    min-width: 0;
+    width: 100%;
+  }
+  .locator__grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 1rem !important;
+  }
+  .locator__status {
+    flex-wrap: wrap;
+    gap: .4rem;
+  }
+  .locator {
+    padding: 1.1rem 1.1rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .book__cover {
+    max-width: 150px !important;
+    width: 150px !important;
+  }
+  .locator__grid {
+    grid-template-columns: 1fr !important;
+  }
+  .book__title {
+    font-size: 1.5rem !important;
+  }
+  .ebook {
+    flex-direction: column;
+    gap: .75rem;
+  }
+}
+
+
+/* ===== FIX DESKTOP LAYOUT - book detail ===== */
+.book {
+  display: block !important;
+  padding: 2rem 0 1rem !important;
+}
+.book__cover {
+  display: none !important;
+}
+.book__main {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+
+/* FIX - Gambar sampul di katalog tidak kepotong */
+.book-card__cover .cover--foto,
+.cover--foto {
+  aspect-ratio: unset !important;
+  width: 100% !important;
+  height: auto !important;
+  max-height: 280px !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  background: var(--cream-2) !important;
+}
+.book-card__cover {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 180px !important;
+  padding: 1rem !important;
 }

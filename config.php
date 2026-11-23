@@ -1,4 +1,7 @@
 <?php
+// Start output buffering untuk menangkap output yang tidak diinginkan
+if (!ob_get_level()) ob_start();
+
 // Start session dengan nama berbeda per port agar tidak bentrok
 if (session_status() === PHP_SESSION_NONE) {
     $port = $_SERVER['SERVER_PORT'] ?? '80';
@@ -209,9 +212,14 @@ function versi_data($user) {
 
 // Cek akses baca isi buku (e-book atau sedang pinjam fisik)
 function akses_isi($user, $buku) {
+    // Admin bisa akses semua PDF
+    if ($user && $user['role'] === 'admin' && $buku['file_pdf']) {
+        return ['format' => 'admin'];
+    }
+    
     // Kalau ada file PDF dan user login
     if ($buku['file_pdf'] && $user) {
-        // Cek apakah sedang pinjam buku ini (fisik atau ebook)
+        // Cek apakah sedang pinjam buku ini (fisik atau ebook) dan belum lewat jatuh tempo
         $pinjam = q('SELECT id, format FROM peminjaman WHERE user_id = ? AND buku_id = ? AND tgl_kembali IS NULL AND jatuh_tempo >= CURDATE()', 
                     [$user['id'], $buku['id']])->fetch();
         if ($pinjam) {

@@ -83,6 +83,14 @@ if (isset($_GET['unduh'])) {
             }, $rincian));
     }
     $isi = $pdf->selesai();
+    
+    // Buang semua output buffer sebelum kirim PDF
+    while (ob_get_level()) ob_end_clean();
+    
+    // Tutup session biar ga lock
+    session_write_close();
+    
+    // Kirim PDF
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="laporan-perpustakaan-' . $dari . '-sd-' . $sampai . '.pdf"');
     header('Content-Length: ' . strlen($isi));

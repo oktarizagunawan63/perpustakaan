@@ -20,7 +20,8 @@ powershell -NoProfile -Command "try { $c = New-Object Net.Sockets.TcpClient; $c.
 if errorlevel 1 (
   echo MySQL belum jalan, menyalakan...
   powershell -NoProfile -Command "Start-Process '%MYSQL%\bin\mysqld.exe' -ArgumentList '--defaults-file=%MYSQL%\my.ini' -WorkingDirectory '%MYSQL%' -WindowStyle Hidden"
-  timeout /t 5 /nobreak >nul
+  echo Menunggu MySQL siap...
+  powershell -NoProfile -Command "for ($i = 0; $i -lt 30; $i++) { try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', 3306); $c.Close(); exit 0 } catch { Start-Sleep 1 } }; exit 1"
 )
 
 rem 2. Import database jika belum ada
@@ -44,7 +45,7 @@ echo [4/5] Start server ANGGOTA (port 9001)...
 start "Server Anggota - Port 9001" "%PHP%\php.exe" -S localhost:9001 -t "%PROJECT%"
 
 rem 5. Buka browser
-timeout /t 2 /nobreak >nul
+powershell -NoProfile -Command "Start-Sleep -Seconds 2"
 echo [5/5] Membuka browser...
 start http://localhost:9000/login.php
 start http://localhost:9001/login.php

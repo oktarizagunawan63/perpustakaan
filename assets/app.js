@@ -42,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }));
 
   // Dasbor memperbarui diri saat data berubah, kecuali sedang ada isian yang belum dikirim
+  // DISABLED: auto-reload dimatikan
+  /*
   const { live, versi } = document.body.dataset;
   const adaIsian = () => document.querySelector('details.reject[open]') || [...document.querySelectorAll('input, textarea, select')].some(el => {
     if (el.tagName === 'SELECT') return el.selectedIndex !== Math.max([...el.options].findIndex(o => o.defaultSelected), 0);
@@ -55,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok && (await res.json()).versi !== versi && !adaIsian()) location.reload();
     } catch { /* server sedang mati: coba lagi di putaran berikutnya */ }
   }, 3000);
+  */
 
   // Jam di Laporan mengikuti waktu server, bukan jam perangkat
   const jam = document.querySelector('[data-jam]');

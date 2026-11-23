@@ -9,10 +9,11 @@ if (!$b || !$b['file_pdf']) {
 }
 $pinjam = akses_isi($u, $b);
 if ($pinjam === null) {
-    flash('info', 'Isi lengkap “' . $b['judul'] . '” terbuka untuk peminjaman versi e-book.');
+    flash('info', 'Isi lengkap "' . $b['judul'] . '" terbuka untuk peminjaman versi e-book.');
     redirect('buku.php?id=' . $b['id']);
 }
-[$kls, $lbl] = $pinjam ? status_pinjaman($pinjam) : ['ok', 'Akses petugas'];
+[$kls, $lbl] = (isset($pinjam['jatuh_tempo'])) ? status_pinjaman($pinjam) : ['ok', 'Akses petugas'];
+$tglLabel = isset($pinjam['jatuh_tempo']) ? ' · ' . tgl($pinjam['jatuh_tempo']) : '';
 
 $judul = $b['judul'];
 $polos = true; // tanpa footer: penampil memakai seluruh tinggi layar
@@ -26,7 +27,7 @@ require __DIR__ . '/partials/header.php';
       <strong><?= e($b['judul']) ?></strong>
       <span><?= e($b['penulis']) ?><?= $b['halaman'] ? ' · ' . number_format((int) $b['halaman'], 0, ',', '.') . ' halaman' : '' ?></span>
     </div>
-    <span class="due due--<?= $kls ?>"><?= e($pinjam ? $lbl . ' · ' . tgl($pinjam['jatuh_tempo']) : $lbl) ?></span>
+    <span class="due due--<?= $kls ?>"><?= e($lbl . $tglLabel) ?></span>
     <a class="btn btn--sm btn--ghost" href="<?= url('berkas.php?id=' . $b['id']) ?>" target="_blank" rel="noopener">Layar penuh</a>
   </div>
   <iframe class="reader__frame" src="<?= url('berkas.php?id=' . $b['id']) ?>#view=FitH" title="Isi buku <?= e($b['judul']) ?>"></iframe>

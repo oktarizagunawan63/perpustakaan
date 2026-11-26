@@ -70,7 +70,7 @@ require __DIR__ . '/partials/header.php';
       </div>
       <?= $err('password') ?>
     </div>
-    <p class="form__note"><a href="<?= url('lupa-password.php') ?>">Lupa kata sandi?</a></p>
+    <p class="form__note">Lupa kata sandi? Hubungi meja sirkulasi.</p>
     <button class="btn btn--block" type="submit">Masuk</button>
     <p class="form__alt">Belum jadi anggota? <a href="<?= url('daftar.php') ?>">Daftar sekarang</a></p>
   </form>

@@ -480,3 +480,38 @@ function catat_pinjaman($user, $bukuId, $hari, $format, $admin = false) {
     $aksi = $admin ? 'dipinjamkan' : 'dipesan';
     return [true, '"' . $buku['judul'] . '" (fisik) ' . $aksi . ' untuk ' . $hari . ' hari.'];
 }
+
+
+// Fungsi kirim email dengan SMTP
+function kirim_email($to, $nama, $subject, $message) {
+    require_once __DIR__ . '/vendor/PHPMailer/PHPMailer.php';
+    require_once __DIR__ . '/vendor/PHPMailer/SMTP.php';
+    require_once __DIR__ . '/vendor/PHPMailer/Exception.php';
+    
+    $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+    
+    try {
+        // Server settings
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com'; // Ganti dengan SMTP host lu
+        $mail->SMTPAuth   = true;
+        $mail->Username   = 'your-email@gmail.com'; // Ganti dengan email lu
+        $mail->Password   = 'your-app-password'; // Ganti dengan app password
+        $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = 587;
+        
+        // Recipients
+        $mail->setFrom('noreply@perpustakaan.local', NAMA_PERPUS);
+        $mail->addAddress($to, $nama);
+        
+        // Content
+        $mail->isHTML(false);
+        $mail->Subject = $subject;
+        $mail->Body    = $message;
+        
+        $mail->send();
+        return [true, null];
+    } catch (Exception $e) {
+        return [false, "Email gagal dikirim: {$mail->ErrorInfo}"];
+    }
+}

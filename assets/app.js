@@ -91,7 +91,6 @@ document.addEventListener('DOMContentLoaded', () => {
       input.type = tampil ? 'text' : 'password';
       b.textContent = tampil ? 'Sembunyikan' : 'Tampilkan';
     }));
-});
 
   // Scroll to Top Button
   const scrollTopBtn = document.getElementById('scrollTop');
@@ -119,3 +118,4 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial check
     toggleScrollButton();
   }
+});

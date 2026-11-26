@@ -6,7 +6,14 @@
   </svg>
 </button>
 
-<?php if (empty($admin) && empty($polos)): ?>
+<?php if (!empty($admin)): ?>
+<footer class="admin-footer">
+  <div class="admin-footer__in">
+    <p>&copy; <?= date('Y') ?> <?= e(NAMA_PERPUS) ?> · Panel Admin</p>
+    <p><a href="<?= url('index.php') ?>">Lihat Situs Publik</a></p>
+  </div>
+</footer>
+<?php elseif (empty($polos)): ?>
 <footer class="footer">
   <div class="wrap footer__in">
     <div>

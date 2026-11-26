@@ -48,7 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $reset) {
 }
 
 $judul = 'Reset Kata Sandi';
-require __DIR__ . '/partials/auth_head.php';
+$polos = true; // Tanpa footer
+require __DIR__ . '/partials/header.php';
 ?>
 
 <div class="auth-page">

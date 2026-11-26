@@ -61,7 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $judul = 'Lupa Kata Sandi';
-require __DIR__ . '/partials/auth_head.php';
+$polos = true; // Tanpa footer
+require __DIR__ . '/partials/header.php';
 ?>
 
 <div class="auth-page">

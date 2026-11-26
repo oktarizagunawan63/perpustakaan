@@ -70,21 +70,52 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
   </div>
 
   <?php if ($admin): ?>
-  <div class="subnav">
-    <div class="wrap subnav__in" aria-label="Panel petugas">
-      <a href="<?= url('admin/index.php') ?>"<?= $navAktif('dash') ?>>Ringkasan</a>
-      <a href="<?= url('admin/sirkulasi.php') ?>"<?= $navAktif('sirkulasi') ?>>Sirkulasi<?php if ($jmlMenunggu): ?>
-        <span class="nav__badge is-late" title="<?= $jmlMenunggu ?> perlu ditangani"><?= $jmlMenunggu ?><span class="sr-only"> perlu ditangani</span></span><?php endif ?></a>
-      <a href="<?= url('admin/denda.php') ?>"<?= $navAktif('denda') ?>>Denda</a>
-      <a href="<?= url('admin/buku.php') ?>"<?= $navAktif('buku') ?>>Koleksi</a>
-      <a href="<?= url('admin/kategori.php') ?>"<?= $navAktif('kategori') ?>>Kategori</a>
-      <a href="<?= url('admin/anggota.php') ?>"<?= $navAktif('anggota') ?>>Anggota</a>
-      <a href="<?= url('admin/usulan.php') ?>"<?= $navAktif('usulan') ?>>Usulan<?php if ($jmlUsulan): ?>
-        <span class="nav__badge" title="<?= $jmlUsulan ?> usulan baru"><?= $jmlUsulan ?><span class="sr-only"> usulan baru</span></span><?php endif ?></a>
-      <a href="<?= url('admin/laporan.php') ?>"<?= $navAktif('laporan') ?>>Laporan</a>
-      <span class="subnav__status <?= $buka ? 'is-open' : '' ?>"><?= e($statusLayanan) ?></span>
+  <aside class="admin-sidebar">
+    <div class="admin-sidebar__header">
+      <span class="admin-sidebar__title">Panel Admin</span>
+      <span class="admin-sidebar__user"><?= avatar($u, 'sm') ?><?= e($u['nama']) ?></span>
     </div>
-  </div>
+    <nav class="admin-sidebar__nav" aria-label="Menu admin">
+      <a href="<?= url('admin/index.php') ?>"<?= $navAktif('dash') ? ' class="is-active"' : '' ?>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Ringkasan
+      </a>
+      <a href="<?= url('admin/sirkulasi.php') ?>"<?= $navAktif('sirkulasi') ? ' class="is-active"' : '' ?>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+        Peminjaman & Pengembalian
+        <?php if ($jmlMenunggu): ?><span class="badge badge--alert"><?= $jmlMenunggu ?></span><?php endif ?>
+      </a>
+      <a href="<?= url('admin/denda.php') ?>"<?= $navAktif('denda') ? ' class="is-active"' : '' ?>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Denda
+      </a>
+      <a href="<?= url('admin/buku.php') ?>"<?= $navAktif('buku') ? ' class="is-active"' : '' ?>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Koleksi Buku
+      </a>
+      <a href="<?= url('admin/kategori.php') ?>"<?= $navAktif('kategori') ? ' class="is-active"' : '' ?>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Kategori
+      </a>
+      <a href="<?= url('admin/anggota.php') ?>"<?= $navAktif('anggota') ? ' class="is-active"' : '' ?>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Anggota
+      </a>
+      <a href="<?= url('admin/usulan.php') ?>"<?= $navAktif('usulan') ? ' class="is-active"' : '' ?>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+        Usulan Buku
+        <?php if ($jmlUsulan): ?><span class="badge"><?= $jmlUsulan ?></span><?php endif ?>
+      </a>
+      <a href="<?= url('admin/laporan.php') ?>"<?= $navAktif('laporan') ? ' class="is-active"' : '' ?>>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Laporan
+      </a>
+      <div class="admin-sidebar__status">
+        <span class="status-dot <?= $buka ? 'is-open' : '' ?>"></span>
+        <?= e($statusLayanan) ?>
+      </div>
+    </nav>
+  </aside>
   <?php endif ?>
 </header>
 

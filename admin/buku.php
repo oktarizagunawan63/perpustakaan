@@ -3,7 +3,6 @@ require __DIR__ . '/../config.php';
 wajib_admin();
 
 const DIR_PDF = __DIR__ . '/../berkas/';
-const DIR_SAMPUL = __DIR__ . '/../assets/sampul/';
 
 /** Nama file aman dari judul + akhiran acak, mis. "farmakologi-dasar-3fa91c.pdf". */
 function nama_berkas(string $judul, string $ext): string

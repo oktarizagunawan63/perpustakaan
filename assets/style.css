@@ -197,9 +197,11 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 
 .steps { list-style: none; counter-reset: s; margin: 2rem 0 0; padding: 0; display: grid; gap: 1.25rem; }
 @media (min-width: 860px) { .steps { grid-template-columns: repeat(4, 1fr); } }
-.steps li { counter-increment: s; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.75rem; }
-.steps li::before { content: counter(s); display: grid; place-items: center; width: 42px; height: 42px; border: 1.5px solid var(--green-800); border-radius: 50%; font-weight: 600; color: var(--green-800); margin-bottom: 1.1rem; }
-.steps p { color: var(--ink-2); margin: 0; font-size: .92rem; }
+@media (max-width: 859px) and (min-width: 520px) { .steps { grid-template-columns: repeat(2, 1fr); } }
+.steps li { counter-increment: s; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.75rem 1.5rem; min-height: 180px; display: flex; flex-direction: column; }
+.steps li::before { content: counter(s); display: grid; place-items: center; width: 42px; height: 42px; border: 2px solid var(--green-800); border-radius: 50%; font-weight: 700; font-size: 1.1rem; color: var(--green-800); margin-bottom: 1.1rem; flex-shrink: 0; }
+.steps h3 { font-size: 1.05rem; margin: 0 0 .5rem; color: var(--ink); }
+.steps p { color: var(--ink-2); margin: 0; font-size: .92rem; line-height: 1.5; }
 
 .callno { font: 500 .8rem var(--mono); color: var(--green-900); background: var(--cream-2); border: 1px solid var(--line); border-radius: 6px; padding: .1rem .45rem; white-space: nowrap; }
 .callno--lg { font-size: 1.05rem; padding: .3rem .7rem; }
@@ -597,15 +599,17 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 
 /* --- Footer hijau ------------------------------------------------------ */
 .footer { background: var(--green-900); color: rgba(239,233,221,.75); margin-top: 3rem; padding: 3.5rem 0 1.5rem; font-size: .88rem; }
-.footer__in { display: grid; gap: 2rem; }
-@media (min-width: 760px) { .footer__in { grid-template-columns: 1.4fr 1fr 1fr; } }
-.footer__brand { display: flex; align-items: center; gap: .7rem; color: var(--cream); margin-bottom: 1rem; }
+.footer__in { display: grid; gap: 3rem; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .footer__in { grid-template-columns: 1.2fr 1fr 1fr; gap: 3rem; } }
+.footer__brand { display: flex; align-items: center; gap: .7rem; color: var(--cream); margin-bottom: .8rem; }
 .footer__brand .logo { width: 40px; height: 40px; }
-.footer__name { font-weight: 700; letter-spacing: .2em; text-transform: uppercase; margin: 0; font-size: .9rem; }
-.footer__label { font-size: .66rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: rgba(239,233,221,.5); }
+.footer__name { font-weight: 700; letter-spacing: .15em; text-transform: uppercase; margin: 0; font-size: .95rem; }
+.footer__in > div:first-child p { max-width: 280px; line-height: 1.6; }
+.footer__label { font-size: .68rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: rgba(239,233,221,.5); margin: 0 0 .9rem; }
 .footer__list { list-style: none; margin: 0; padding: 0; }
-.footer__list li { padding: .25rem 0; }
-.footer a { color: var(--cream); }
+.footer__list li { padding: .4rem 0; }
+.footer a { color: var(--cream); text-decoration: none; transition: color .2s; }
+.footer a:hover { color: #fff; }
 .footer__base { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid rgba(239,233,221,.12); font-size: .78rem; color: rgba(239,233,221,.45); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
@@ -774,7 +778,7 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
   aspect-ratio: unset !important;
   width: 100% !important;
   height: auto !important;
-  max-height: 280px !important;
+  max-height: 200px !important;
   object-fit: contain !important;
   object-position: center !important;
   background: var(--cream-2) !important;
@@ -783,8 +787,15 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  min-height: 180px !important;
+  min-height: 150px !important;
+  max-height: 200px !important;
   padding: 1rem !important;
+}
+.book-card__cover .cover,
+.book-card__cover .sampul {
+  max-height: 200px !important;
+  width: auto !important;
+  object-fit: contain !important;
 }
 
 /* Khusus sampul kecil di list */
@@ -835,4 +846,230 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
   .loan__side {
     grid-column: 3 !important;
   }
+}
+
+
+/* ==========================================================================
+   ADMIN SIDEBAR - Menu vertical di kiri untuk dashboard admin
+   ========================================================================== */
+.admin-sidebar {
+  position: fixed;
+  left: 0;
+  top: 70px;
+  bottom: 0;
+  width: 260px;
+  background: var(--green-900);
+  color: var(--cream);
+  overflow-y: auto;
+  z-index: 15;
+  box-shadow: 2px 0 8px rgba(0,0,0,.15);
+}
+
+.admin-sidebar__header {
+  padding: 1.5rem 1.25rem;
+  border-bottom: 1px solid rgba(239,233,221,.12);
+}
+
+.admin-sidebar__title {
+  display: block;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: rgba(239,233,221,.5);
+  margin-bottom: .75rem;
+}
+
+.admin-sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--cream);
+}
+
+.admin-sidebar__nav {
+  padding: .75rem 0;
+}
+
+.admin-sidebar__nav a {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  padding: .85rem 1.25rem;
+  color: rgba(239,233,221,.75);
+  text-decoration: none;
+  font-size: .88rem;
+  font-weight: 600;
+  transition: background .2s, color .2s;
+  position: relative;
+}
+
+.admin-sidebar__nav a svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  opacity: .7;
+}
+
+.admin-sidebar__nav a:hover {
+  background: rgba(255,255,255,.06);
+  color: #fff;
+}
+
+.admin-sidebar__nav a:hover svg {
+  opacity: 1;
+}
+
+.admin-sidebar__nav a.is-active {
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  box-shadow: inset 3px 0 0 var(--cream);
+}
+
+.admin-sidebar__nav a.is-active svg {
+  opacity: 1;
+}
+
+.admin-sidebar__nav .badge {
+  margin-left: auto;
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 .4rem;
+  border-radius: 99px;
+  background: var(--cream);
+  color: var(--green-800);
+  font-size: .7rem;
+  font-weight: 700;
+}
+
+.admin-sidebar__nav .badge--alert {
+  background: #E3735E;
+  color: #fff;
+}
+
+.admin-sidebar__status {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: 1.25rem 1.25rem .5rem;
+  font-size: .78rem;
+  color: rgba(239,233,221,.55);
+  border-top: 1px solid rgba(239,233,221,.12);
+  margin-top: .75rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(239,233,221,.4);
+  flex-shrink: 0;
+}
+
+.status-dot.is-open {
+  background: #9FD3BC;
+  box-shadow: 0 0 8px #9FD3BC;
+}
+
+/* Layout untuk konten admin dengan sidebar */
+.is-admin main {
+  margin-left: 260px;
+  min-height: calc(100vh - 70px);
+}
+
+@media (max-width: 1080px) {
+  .admin-sidebar {
+    transform: translateX(-100%);
+    transition: transform .3s;
+  }
+  
+  .admin-sidebar.is-open {
+    transform: translateX(0);
+  }
+  
+  .is-admin main {
+    margin-left: 0;
+  }
+  
+  .nav-toggle {
+    display: block;
+  }
+}
+
+
+/* Admin Footer - Simple footer untuk dashboard admin */
+.admin-footer {
+  margin-left: 260px;
+  background: var(--green-900);
+  color: rgba(239,233,221,.7);
+  padding: 1.5rem 0;
+  margin-top: 4rem;
+  border-top: 1px solid rgba(239,233,221,.12);
+}
+
+.admin-footer__in {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: .85rem;
+}
+
+.admin-footer__in p {
+  margin: 0;
+}
+
+.admin-footer__in a {
+  color: var(--cream);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.admin-footer__in a:hover {
+  color: #fff;
+}
+
+@media (max-width: 1080px) {
+  .admin-footer {
+    margin-left: 0;
+  }
+}
+
+
+/* Section guide - Cara meminjam buku di katalog */
+.cara-pinjam-section {
+  background: var(--cream-2);
+  padding: 3.5rem 0 4rem;
+  margin: 3rem 0 0;
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+}
+
+.cara-pinjam-section h2 {
+  text-align: center;
+  margin: 0 0 2.5rem;
+  font-size: 1.8rem;
+  color: var(--ink);
+}
+
+.cara-pinjam-section .steps {
+  margin: 0;
+}
+
+/* Fix footer layout */
+.footer {
+  width: 100%;
+  margin-left: 0 !important;
 }

@@ -129,26 +129,28 @@ require __DIR__ . '/partials/header.php';
     <?php endif ?>
   </section>
 
-  <section class="section" id="cara-pinjam">
-    <h2>Cara meminjam buku</h2>
-    <ol class="steps">
-      <li>
-        <h3>Cari buku</h3>
-        <p>Gunakan kolom pencarian di atas atau jelajahi berdasarkan kategori untuk menemukan buku yang kamu inginkan.</p>
-      </li>
-      <li>
-        <h3>Klik "Pinjam"</h3>
-        <p>Buka halaman detail buku, lalu klik tombol <strong>Pinjam buku fisik</strong> atau <strong>Baca e-book</strong>.</p>
-      </li>
-      <li>
-        <h3>Ambil di perpustakaan</h3>
-        <p>Untuk buku fisik, datang ke meja sirkulasi dan tunjukkan permintaan pinjaman. Petugas akan menyiapkan bukumu.</p>
-      </li>
-      <li>
-        <h3>Kembalikan tepat waktu</h3>
-        <p>Kembalikan buku fisik sebelum jatuh tempo untuk menghindari denda <?= rupiah(DENDA_PER_HARI) ?> per hari keterlambatan.</p>
-      </li>
-    </ol>
+  <section class="cara-pinjam-section" id="cara-pinjam">
+    <div class="wrap">
+      <h2>Cara meminjam buku</h2>
+      <ol class="steps">
+        <li>
+          <h3>Cari buku</h3>
+          <p>Gunakan kolom pencarian di atas atau jelajahi berdasarkan kategori untuk menemukan buku yang kamu inginkan.</p>
+        </li>
+        <li>
+          <h3>Klik "Pinjam"</h3>
+          <p>Buka halaman detail buku, lalu klik tombol <strong>Pinjam buku fisik</strong> atau <strong>Baca e-book</strong>.</p>
+        </li>
+        <li>
+          <h3>Ambil di perpustakaan</h3>
+          <p>Untuk buku fisik, datang ke meja sirkulasi dan tunjukkan permintaan pinjaman. Petugas akan menyiapkan bukumu.</p>
+        </li>
+        <li>
+          <h3>Kembalikan tepat waktu</h3>
+          <p>Kembalikan buku fisik sebelum jatuh tempo untuk menghindari denda <?= rupiah(DENDA_PER_HARI) ?> per hari keterlambatan.</p>
+        </li>
+      </ol>
+    </div>
   </section>
 </div>
 

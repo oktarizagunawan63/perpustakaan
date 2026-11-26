@@ -1175,7 +1175,7 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
   opacity: 0;
   visibility: hidden;
   transform: translateY(10px);
-  z-index: 100;
+  z-index: 1000;
 }
 
 .scroll-top.show {

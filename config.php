@@ -342,7 +342,9 @@ function daftarkan_anggota($data) {
     q('INSERT INTO users (no_anggota, nama, email, telepon, password, role) VALUES (?, ?, ?, ?, ?, "anggota")',
         [$noAnggota, $masukan['nama'], $masukan['email'], $masukan['telepon'] ?: null, password_hash($password, PASSWORD_DEFAULT)]);
     
-    return [array_merge($masukan, ['no_anggota' => $noAnggota, 'id' => pdo()->lastInsertId()]), []];
+    $id = (int) pdo()->lastInsertId();
+    $akun = q('SELECT * FROM users WHERE id = ?', [$id])->fetch(PDO::FETCH_ASSOC);
+    return [$akun, []];
 }
 
 // Simpan foto upload

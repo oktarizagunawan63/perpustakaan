@@ -55,7 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(live, { cache: 'no-store' });
       if (res.ok && (await res.json()).versi !== versi && !adaIsian()) location.reload();
-    } catch { /* server sedang mati: coba lagi di putaran berikutnya */ }
+    } catch { // server sedang mati: coba lagi di putaran berikutnya
+    }
   }, 3000);
   */
 

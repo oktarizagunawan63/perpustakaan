@@ -27,8 +27,8 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="<?= url('assets/style.css?v=2') ?>">
-<script src="<?= url('assets/app.js?v=2') ?>" defer></script>
+<link rel="stylesheet" href="<?= url('assets/style.css?v=5') ?>">
+<script src="<?= url('assets/app.js?v=5') ?>" defer></script>
 </head>
 <body class="<?= $admin ? 'is-admin' : '' ?>"<?= $live ? ' data-live="' . url('perubahan.php') . '" data-versi="' . versi_data($u) . '"' : '' ?>>
 <a class="skip" href="#isi">Langsung ke konten</a>

@@ -34,8 +34,8 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; overflow-x: hidden; }
-body { margin: 0; background: var(--cream); color: var(--ink); font: 15.5px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; width: 100%; position: relative; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 5rem; overflow-x: clip; }
+body { margin: 0; background: var(--cream); color: var(--ink); font: 15.5px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: clip; width: 100%; position: relative; }
 h1, h2, h3 { font-weight: 600; line-height: 1.2; margin: 0 0 .5em; letter-spacing: -.01em; }
 h1 { font-size: clamp(1.7rem, 3.4vw, 2.3rem); }
 h2 { font-size: 1.35rem; }
@@ -588,9 +588,9 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 .mini-list__end { text-align: right; flex: none; }
 
 .circ { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-items: start; }
-@media (min-width: 980px) {
-  .circ { grid-template-columns: 360px 1fr; }
-  .circ--reverse { grid-template-columns: 1fr 340px; }
+@media (min-width: 1380px) {
+  .circ { grid-template-columns: 340px minmax(0, 1fr); }
+  .circ--reverse { grid-template-columns: minmax(0, 1fr) 320px; }
   .circ__form { position: sticky; top: 140px; }
 }
 .circ__list { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
@@ -1165,7 +1165,7 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
   height: 50px;
   background: var(--green-800);
   color: #fff;
-  border: 0;
+  border: 1.5px solid rgba(255,255,255,.28);
   border-radius: 50%;
   cursor: pointer;
   display: grid;
@@ -1216,10 +1216,4 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 /* Adjust for admin sidebar */
 .is-admin .scroll-top {
   right: 2rem;
-}
-
-@media (min-width: 1081px) {
-  .is-admin .scroll-top {
-    right: calc((100vw - 260px) / 2 - 580px + 2rem);
-  }
 }

@@ -92,3 +92,30 @@ document.addEventListener('DOMContentLoaded', () => {
       b.textContent = tampil ? 'Sembunyikan' : 'Tampilkan';
     }));
 });
+
+  // Scroll to Top Button
+  const scrollTopBtn = document.getElementById('scrollTop');
+  if (scrollTopBtn) {
+    // Show/hide button based on scroll position
+    const toggleScrollButton = () => {
+      if (window.scrollY > 300) {
+        scrollTopBtn.classList.add('show');
+      } else {
+        scrollTopBtn.classList.remove('show');
+      }
+    };
+
+    // Scroll to top when clicked
+    scrollTopBtn.addEventListener('click', () => {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    });
+
+    // Listen to scroll event
+    window.addEventListener('scroll', toggleScrollButton, { passive: true });
+    
+    // Initial check
+    toggleScrollButton();
+  }

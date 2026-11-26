@@ -21,25 +21,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user = q('SELECT id, nama, email FROM users WHERE email = ?', [$email])->fetch();
         
         if ($user) {
-            // Generate token
-            $token = bin2hex(random_bytes(32));
-            $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
+            // Generate code 6 digit
+            $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $expires = date('Y-m-d H:i:s', strtotime('+15 minutes'));
             
-            // Hapus token lama untuk user ini
+            // Hapus code lama untuk user ini
             q('DELETE FROM password_resets WHERE user_id = ?', [$user['id']]);
             
-            // Simpan token baru
-            q('INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)', 
-              [$user['id'], $token, $expires]);
+            // Simpan code baru
+            q('INSERT INTO password_resets (user_id, code, expires_at) VALUES (?, ?, ?)', 
+              [$user['id'], $code, $expires]);
             
             // Kirim email
-            $resetLink = url('reset-password.php?token=' . $token);
-            $subject = 'Reset Password - ' . NAMA_PERPUS;
+            $subject = 'Kode Reset Password - ' . NAMA_PERPUS;
             $message = "Halo " . $user['nama'] . ",\n\n";
-            $message .= "Anda menerima email ini karena ada permintaan reset password untuk akun Anda.\n\n";
-            $message .= "Klik link berikut untuk reset password:\n";
-            $message .= $resetLink . "\n\n";
-            $message .= "Link ini akan kadaluarsa dalam 1 jam.\n\n";
+            $message .= "Kode reset password Anda adalah:\n\n";
+            $message .= "    " . $code . "\n\n";
+            $message .= "Kode ini akan kadaluarsa dalam 15 menit.\n\n";
             $message .= "Jika Anda tidak meminta reset password, abaikan email ini.\n\n";
             $message .= "Terima kasih,\n";
             $message .= NAMA_PERPUS;
@@ -48,14 +46,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $headers .= "Reply-To: noreply@perpustakaan.local\r\n";
             $headers .= "X-Mailer: PHP/" . phpversion();
             
+            // Untuk development, tampilkan code (nanti hapus di production)
             if (mail($user['email'], $subject, $message, $headers)) {
-                $success = 'Link reset password telah dikirim ke email Anda. Silakan cek inbox atau folder spam.';
+                $_SESSION['reset_email'] = $email;
+                redirect('reset-password.php');
             } else {
-                $error = 'Gagal mengirim email. Silakan hubungi admin.';
+                // Kalau email gagal, kasih tau code-nya (development only)
+                $error = 'Gagal mengirim email. Kode reset Anda: ' . $code . ' (berlaku 15 menit)';
             }
         } else {
             // Jangan kasih tau kalau email ga ada (security)
-            $success = 'Jika email terdaftar, link reset password akan dikirim ke email Anda.';
+            $_SESSION['reset_email'] = $email;
+            redirect('reset-password.php');
         }
     }
 }
@@ -75,11 +77,7 @@ require __DIR__ . '/partials/header.php';
       <div class="notice notice--error"><?= e($error) ?></div>
     <?php endif ?>
 
-    <?php if ($success): ?>
-      <div class="notice notice--ok"><?= e($success) ?></div>
-      <a class="btn btn--block" href="<?= url('login.php') ?>">Kembali ke Login</a>
-    <?php else: ?>
-      <form class="form" method="post">
+    <form class="form" method="post">
         <?= csrf_field() ?>
         
         <div class="field">
@@ -104,7 +102,6 @@ require __DIR__ . '/partials/header.php';
         <span>·</span>
         <a href="<?= url('daftar.php') ?>">Daftar Anggota</a>
       </p>
-    <?php endif ?>
   </div>
 </div>
 

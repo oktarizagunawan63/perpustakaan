@@ -5,20 +5,20 @@ wajib_admin();
 $s = q('SELECT
           (SELECT COUNT(*) FROM buku) judul,
           (SELECT COALESCE(SUM(stok),0) FROM buku) eksemplar,
-          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL) aktif,
-          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND format = "fisik") aktif_fisik,
-          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_ajuan IS NOT NULL) menunggu,
-          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_setuju IS NULL AND tgl_ambil IS NULL) permintaan,
-          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_setuju IS NOT NULL AND tgl_ambil IS NULL) pesanan,
-          (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND tgl_ajuan IS NULL AND format = "fisik" AND jatuh_tempo < CURDATE()) terlambat,
+          (SELECT COUNT(*) FROM peminjaman WHERE ' . SQL_STATUS_AKTIF . ') aktif,
+          (SELECT COUNT(*) FROM peminjaman WHERE ' . SQL_STATUS_AKTIF . ' AND format = "fisik") aktif_fisik,
+          (SELECT COUNT(*) FROM peminjaman WHERE status = "dipinjam" AND tgl_ajuan IS NOT NULL) menunggu,
+          (SELECT COUNT(*) FROM peminjaman WHERE status = "menunggu") permintaan,
+          (SELECT COUNT(*) FROM peminjaman WHERE status = "disetujui") pesanan,
+          (SELECT COUNT(*) FROM peminjaman WHERE status = "dipinjam" AND tgl_ajuan IS NULL AND format = "fisik" AND jatuh_tempo < CURDATE()) terlambat,
           (SELECT COUNT(*) FROM users WHERE role = "anggota" AND aktif = 1) anggota,
           (SELECT COUNT(*) FROM peminjaman WHERE tgl_pinjam = CURDATE()) pinjam_hari_ini,
           (SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali = CURDATE()) kembali_hari_ini')->fetch();
 
 $sqlAktif = 'SELECT p.*, b.judul, u.nama, u.no_anggota, u.telepon FROM peminjaman p
-             JOIN buku b ON b.id = p.buku_id JOIN users u ON u.id = p.user_id WHERE p.tgl_kembali IS NULL';
+             JOIN buku b ON b.id = p.buku_id JOIN users u ON u.id = p.user_id WHERE p.' . SQL_STATUS_AKTIF;
 // Yang perlu ditagih/diingatkan hanya buku fisik yang belum diserahkan (e-book berakhir otomatis)
-$sqlFisik = $sqlAktif . ' AND p.format = "fisik" AND p.tgl_ambil IS NOT NULL AND p.tgl_ajuan IS NULL';
+$sqlFisik = $sqlAktif . ' AND p.format = "fisik" AND p.status = "dipinjam" AND p.tgl_ajuan IS NULL';
 $terlambat = q("$sqlFisik AND p.jatuh_tempo < CURDATE() ORDER BY p.jatuh_tempo")->fetchAll();
 $segera = q("$sqlFisik AND p.jatuh_tempo BETWEEN CURDATE() AND CURDATE() + INTERVAL 2 DAY ORDER BY p.jatuh_tempo")->fetchAll();
 $dendaBerjalan = array_sum(array_map('denda_pinjaman', $terlambat));

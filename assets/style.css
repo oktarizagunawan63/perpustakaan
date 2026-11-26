@@ -544,6 +544,18 @@ mark { background: #F3E2A6; color: inherit; padding: 0 .1em; border-radius: 3px;
 .loan__note { margin: .45rem 0 0; font-size: .8rem; color: var(--muted); }
 .loan--wait .loan__note { color: #34507A; font-weight: 600; }
 
+/* --- Stepper status pinjaman fisik ------------------------------------- */
+.stepper { list-style: none; margin: .8rem 0 0; padding: 0; display: flex; align-items: flex-start; gap: .35rem; max-width: 420px; }
+.stepper__step { position: relative; flex: 1 1 0; display: flex; flex-direction: column; align-items: center; text-align: center; gap: .3rem; min-width: 0; }
+.stepper__step:not(:last-child)::after { content: ""; position: absolute; top: 6px; left: calc(50% + 10px); right: calc(-50% + 10px); height: 2px; background: var(--line); }
+.stepper__step--done:not(:last-child)::after { background: var(--green-800); }
+.stepper__dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-2); background: var(--card); position: relative; z-index: 1; flex-shrink: 0; }
+.stepper__step--done .stepper__dot { border-color: var(--green-800); background: var(--green-800); }
+.stepper__step--active .stepper__dot { border-color: var(--green-800); background: var(--green-100); box-shadow: 0 0 0 3px rgba(15,61,53,.14); }
+.stepper__label { font-size: .72rem; line-height: 1.25; color: var(--muted); overflow-wrap: break-word; }
+.stepper__step--done .stepper__label,
+.stepper__step--active .stepper__label { color: var(--green-800); font-weight: 600; }
+
 /* --- Tabel ------------------------------------------------------------- */
 .table-wrap { position: relative; overflow-x: auto; margin-inline: -1.5rem; padding-inline: 1.5rem; }
 .section .table-wrap { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); margin: 0; }

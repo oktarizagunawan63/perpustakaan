@@ -13,7 +13,7 @@ if (!$b) {
     flash('error', 'Buku tidak ditemukan.');
     redirect('katalog.php');
 }
-if (q('SELECT 1 FROM peminjaman WHERE user_id = ? AND buku_id = ? AND tgl_kembali IS NULL', [$u['id'], $b['id']])->fetch()) {
+if (q('SELECT 1 FROM peminjaman WHERE user_id = ? AND buku_id = ? AND ' . SQL_STATUS_AKTIF, [$u['id'], $b['id']])->fetch()) {
     flash('info', 'Kamu sedang meminjam buku ini.');
     redirect('buku.php?id=' . $b['id']);
 }
@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$jumlahPinjam = (int) q('SELECT COUNT(*) FROM peminjaman WHERE user_id = ? AND tgl_kembali IS NULL', [$u['id']])->fetchColumn();
+$jumlahPinjam = (int) q('SELECT COUNT(*) FROM peminjaman WHERE user_id = ? AND ' . SQL_STATUS_AKTIF, [$u['id']])->fetchColumn();
 $tunggakan = denda_belum_lunas((int) $u['id']);
 $bisa = $jumlahPinjam < MAKS_PINJAM && !$tunggakan && ($bisaEbook || $bisaFisik);
 $pilihanFormat = [

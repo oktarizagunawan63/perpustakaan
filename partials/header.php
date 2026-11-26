@@ -9,13 +9,13 @@ $live = ($live ?? false) && $u && $_SERVER['REQUEST_METHOD'] === 'GET';
 $navAktif = fn(string $k) => $menu === $k ? ' aria-current="page"' : '';
 // Angka di menu "Pinjaman saya": jumlah pinjaman aktif, merah bila ada buku fisik terlambat yang belum diserahkan
 [$jmlPinjam, $jmlTelat] = $u && $u['role'] !== 'admin'
-    ? array_map('intval', q('SELECT COUNT(*), COALESCE(SUM(format = "fisik" AND tgl_ajuan IS NULL AND jatuh_tempo < CURDATE()), 0)
-                             FROM peminjaman WHERE user_id = ? AND tgl_kembali IS NULL', [$u['id']])->fetch(PDO::FETCH_NUM))
+    ? array_map('intval', q('SELECT COUNT(*), COALESCE(SUM(status = "dipinjam" AND format = "fisik" AND tgl_ajuan IS NULL AND jatuh_tempo < CURDATE()), 0)
+                             FROM peminjaman WHERE user_id = ? AND ' . SQL_STATUS_AKTIF, [$u['id']])->fetch(PDO::FETCH_NUM))
     : [0, 0];
 // Pemberitahuan yang belum ditutup anggota, ditandai merah di menu "Pinjaman saya"
 $jmlPesan = $u && $u['role'] !== 'admin' ? (int) q('SELECT COUNT(*) FROM pemberitahuan WHERE user_id = ? AND dibaca IS NULL', [$u['id']])->fetchColumn() : 0;
 // Angka di menu petugas: permintaan, pesanan, dan buku yang menunggu dicek (Sirkulasi), usulan baru (Usulan)
-$jmlMenunggu = $admin ? (int) q('SELECT COUNT(*) FROM peminjaman WHERE tgl_kembali IS NULL AND (tgl_ambil IS NULL OR tgl_ajuan IS NOT NULL)')->fetchColumn() : 0;
+$jmlMenunggu = $admin ? (int) q('SELECT COUNT(*) FROM peminjaman WHERE ' . SQL_STATUS_AKTIF . ' AND (status IN ("menunggu","disetujui") OR tgl_ajuan IS NOT NULL)')->fetchColumn() : 0;
 $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"')->fetchColumn() : 0;
 ?>
 <!doctype html>
@@ -27,8 +27,8 @@ $jmlUsulan = $admin ? (int) q('SELECT COUNT(*) FROM usulan WHERE status = "baru"
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@1,6..72,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="<?= url('assets/style.css?v=5') ?>">
-<script src="<?= url('assets/app.js?v=5') ?>" defer></script>
+<link rel="stylesheet" href="<?= url('assets/style.css?v=6') ?>">
+<script src="<?= url('assets/app.js?v=6') ?>" defer></script>
 </head>
 <body class="<?= $admin ? 'is-admin' : '' ?>"<?= $live ? ' data-live="' . url('perubahan.php') . '" data-versi="' . versi_data($u) . '"' : '' ?>>
 <a class="skip" href="#isi">Langsung ke konten</a>

@@ -13,7 +13,7 @@ if (!$b) {
 }
 
 $u = user();
-$pinjamanSaya = $u ? q('SELECT * FROM peminjaman WHERE user_id = ? AND buku_id = ? AND tgl_kembali IS NULL', [$u['id'], $b['id']])->fetch() : null;
+$pinjamanSaya = $u ? q('SELECT * FROM peminjaman WHERE user_id = ? AND buku_id = ? AND ' . SQL_STATUS_AKTIF, [$u['id'], $b['id']])->fetch() : null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_cek();
@@ -45,7 +45,7 @@ $anggota = $u && $u['role'] === 'anggota';
 $tersimpan = $anggota && q('SELECT 1 FROM favorit WHERE user_id = ? AND buku_id = ?', [$u['id'], $b['id']])->fetch();
 $antreSaya = $anggota ? q('SELECT a.tgl_tersedia, ' . SQL_POSISI_ANTREAN . ' AS posisi FROM antrean a WHERE a.user_id = ? AND a.buku_id = ?', [$u['id'], $b['id']])->fetch() : null;
 $giliran = $antreSaya && $antreSaya['tgl_tersedia'];
-$kembaliTerdekat = $b['tersedia'] <= 0 ? q('SELECT MIN(jatuh_tempo) FROM peminjaman WHERE buku_id = ? AND format = "fisik" AND tgl_kembali IS NULL', [$b['id']])->fetchColumn() : null;
+$kembaliTerdekat = $b['tersedia'] <= 0 ? q('SELECT MIN(jatuh_tempo) FROM peminjaman WHERE buku_id = ? AND format = "fisik" AND status = "dipinjam"', [$b['id']])->fetchColumn() : null;
 $bisaPinjam = $b['tersedia'] > 0 || $b['file_pdf'] || $giliran;
 $bisaAntre = $b['stok'] > 0 && $b['tersedia'] <= 0 && !$pinjamanSaya && !$antreSaya;
 $bisaBaca = akses_isi($u, $b) !== null;

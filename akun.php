@@ -81,8 +81,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $akun = q('SELECT * FROM users WHERE id = ?', [$u['id']])->fetch();
 $r = q('SELECT
-          COALESCE(SUM(tgl_kembali IS NULL), 0) aktif,
-          COALESCE(SUM(tgl_kembali IS NULL AND tgl_ajuan IS NULL AND format = "fisik" AND jatuh_tempo < CURDATE()), 0) telat,
+          COALESCE(SUM(' . SQL_STATUS_AKTIF . '), 0) aktif,
+          COALESCE(SUM(status = "dipinjam" AND tgl_ajuan IS NULL AND format = "fisik" AND jatuh_tempo < CURDATE()), 0) telat,
           COUNT(*) total,
           COALESCE(SUM(denda + denda_kondisi), 0) denda_tercatat
         FROM peminjaman WHERE user_id = ?', [$u['id']])->fetch();

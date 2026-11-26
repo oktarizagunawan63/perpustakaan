@@ -54,7 +54,7 @@ $id = (int) ($_GET['id'] ?? $_POST['id'] ?? 0);
 $modeForm = $id > 0 || isset($_GET['baru']);
 $b = $kosong;
 $galat = [];
-$fisikDipinjam = fn(int $bukuId) => (int) q('SELECT COUNT(*) FROM peminjaman WHERE buku_id = ? AND format = "fisik" AND tgl_kembali IS NULL', [$bukuId])->fetchColumn();
+$fisikDipinjam = fn(int $bukuId) => (int) q('SELECT COUNT(*) FROM peminjaman WHERE buku_id = ? AND format = "fisik" AND status IN ("disetujui","dipinjam")', [$bukuId])->fetchColumn();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_cek();

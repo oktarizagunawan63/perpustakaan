@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['hapus'])) {
         $a = q('SELECT id, nama, foto FROM users WHERE id = ? AND role = "anggota" AND dihapus IS NULL', [(int) $_POST['hapus']])->fetch();
         if ($a) {
-            $berjalan = (int) q('SELECT COUNT(*) FROM peminjaman WHERE user_id = ? AND tgl_kembali IS NULL', [$a['id']])->fetchColumn();
+            $berjalan = (int) q('SELECT COUNT(*) FROM peminjaman WHERE user_id = ? AND ' . SQL_STATUS_AKTIF, [$a['id']])->fetchColumn();
             $tunggakan = denda_belum_lunas((int) $a['id']);
             if ($berjalan) {
                 flash('error', $a['nama'] . ' masih punya ' . $berjalan . ' pinjaman atau permintaan berjalan. Selesaikan dulu sebelum menghapus.');
@@ -60,8 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $cari = trim($_GET['q'] ?? '');
 $args = $cari !== '' ? array_fill(0, 4, "%$cari%") : [];
 $daftar = q('SELECT u.*,
-               (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL) aktif_pinjam,
-               (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.tgl_kembali IS NULL AND p.tgl_ajuan IS NULL AND p.format = "fisik" AND p.jatuh_tempo < CURDATE()) telat
+               (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.' . SQL_STATUS_AKTIF . ') aktif_pinjam,
+               (SELECT COUNT(*) FROM peminjaman p WHERE p.user_id = u.id AND p.status = "dipinjam" AND p.tgl_ajuan IS NULL AND p.format = "fisik" AND p.jatuh_tempo < CURDATE()) telat
              FROM users u WHERE u.role = "anggota" AND u.dihapus IS NULL '
     . ($cari !== '' ? 'AND (u.nama LIKE ? OR u.email LIKE ? OR u.no_anggota LIKE ? OR u.username LIKE ?) ' : '') . 'ORDER BY u.nama', $args)->fetchAll();
 

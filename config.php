@@ -17,8 +17,9 @@ define('DB_NAME', 'db_perpustakaan');
 define('NAMA_PERPUS', 'Perpustakaan Kampus');
 
 // SQL untuk hitung antrian peminjaman buku yang sama
-define('SQL_DIANTRE', '(SELECT COUNT(*) FROM peminjaman p2 WHERE p2.buku_id = p.buku_id AND p2.tgl_kembali IS NULL AND p2.tgl_setuju IS NULL AND p2.id < p.id)');
-define('SQL_POSISI_ANTREAN', '(SELECT COUNT(*) FROM peminjaman p2 WHERE p2.buku_id = a.buku_id AND p2.tgl_kembali IS NULL AND p2.tgl_setuju IS NULL)');
+define('SQL_STATUS_AKTIF', "status IN ('menunggu','disetujui','dipinjam')");
+define('SQL_DIANTRE', '(SELECT COUNT(*) FROM peminjaman p2 WHERE p2.buku_id = p.buku_id AND p2.status = "menunggu" AND p2.id < p.id)');
+define('SQL_POSISI_ANTREAN', '(SELECT COUNT(*) FROM peminjaman p2 WHERE p2.buku_id = a.buku_id AND p2.status = "menunggu")');
 
 // Konstanta lainnya
 define('MAKS_PINJAM', 3);
@@ -42,8 +43,8 @@ define('DIR_FOTO', __DIR__ . '/assets/foto/');
 define('DIR_SAMPUL', __DIR__ . '/assets/sampul/');
 define('DIR_BERKAS', __DIR__ . '/berkas/');
 
-// SQL helper untuk menghitung buku yang dipinjam
-define('SQL_DIPINJAM', '(SELECT COUNT(*) FROM peminjaman WHERE buku_id = b.id AND tgl_kembali IS NULL AND format = "fisik")');
+// SQL helper untuk menghitung buku fisik yang stoknya sedang ditahan/dipinjam
+define('SQL_DIPINJAM', '(SELECT COUNT(*) FROM peminjaman WHERE buku_id = b.id AND format = "fisik" AND status IN ("disetujui","dipinjam"))');
 
 // Base URL - auto detect port
 $port = $_SERVER['SERVER_PORT'] ?? '80';
@@ -78,7 +79,15 @@ function q($sql, $params = []) {
 
 // Get current user
 function user() {
-    return $_SESSION['user'] ?? null;
+    if (empty($_SESSION['user'])) return null;
+    if (!isset($_SESSION['user']['role']) && !empty($_SESSION['user']['id'])) {
+        $fresh = q('SELECT * FROM users WHERE id = ?', [$_SESSION['user']['id']])->fetch(PDO::FETCH_ASSOC);
+        if ($fresh) {
+            unset($fresh['password']);
+            $_SESSION['user'] = $fresh;
+        }
+    }
+    return $_SESSION['user'];
 }
 
 // Require admin role
@@ -206,7 +215,7 @@ function pengingat($user) {
 // Versi data untuk live update
 function versi_data($user) {
     // Pakai timestamp terbaru dari tabel peminjaman supaya hanya reload kalau ada perubahan data beneran
-    $v = q('SELECT MAX(GREATEST(COALESCE(UNIX_TIMESTAMP(tgl_pinjam),0), COALESCE(UNIX_TIMESTAMP(tgl_kembali),0), COALESCE(UNIX_TIMESTAMP(tgl_setuju),0), COALESCE(UNIX_TIMESTAMP(tgl_ambil),0))) FROM peminjaman')->fetchColumn();
+    $v = q('SELECT MAX(GREATEST(COALESCE(UNIX_TIMESTAMP(tgl_pinjam),0), COALESCE(UNIX_TIMESTAMP(tgl_kembali),0), COALESCE(UNIX_TIMESTAMP(disetujui_at),0), COALESCE(UNIX_TIMESTAMP(diambil_at),0))) FROM peminjaman')->fetchColumn();
     return $v ?: '0';
 }
 
@@ -220,7 +229,7 @@ function akses_isi($user, $buku) {
     // Kalau ada file PDF dan user login
     if ($buku['file_pdf'] && $user) {
         // Cek apakah sedang pinjam buku ini (fisik atau ebook) dan belum lewat jatuh tempo
-        $pinjam = q('SELECT id, format FROM peminjaman WHERE user_id = ? AND buku_id = ? AND tgl_kembali IS NULL AND jatuh_tempo >= CURDATE()', 
+        $pinjam = q('SELECT id, format FROM peminjaman WHERE user_id = ? AND buku_id = ? AND status = "dipinjam" AND jatuh_tempo >= CURDATE()', 
                     [$user['id'], $buku['id']])->fetch();
         if ($pinjam) {
             return $pinjam;
@@ -281,12 +290,28 @@ function denda_pinjaman($pinjaman) {
     return 0;
 }
 
-// Status pinjaman
+// Status pinjaman untuk badge dan kelas kartu
 function status_pinjaman($pinjaman) {
+    $status = $pinjaman['status'] ?? 'dipinjam';
+    if ($status === 'menunggu') return ['wait', 'Menunggu validasi'];
+    if ($status === 'disetujui') return ['wait', 'Siap diambil'];
+    if ($status === 'ditolak') return ['late', 'Ditolak'];
+    if ($status === 'kedaluwarsa') return ['late', 'Kedaluwarsa'];
+    if ($status === 'dibatalkan') return ['wait', 'Dibatalkan'];
+    if ($status === 'dikembalikan') return ['ok', 'Dikembalikan'];
+
     $hari = (strtotime($pinjaman['jatuh_tempo']) - strtotime('today')) / 86400;
     if ($hari < 0) return ['late', 'Terlambat'];
     if ($hari <= 2) return ['soon', 'Segera'];
     return ['ok', 'Normal'];
+}
+
+// Tandai pesanan disetujui yang melewati batas_ambil sebagai kedaluwarsa
+function cek_kedaluwarsa() {
+    static $sudah = false;
+    if ($sudah) return;
+    $sudah = true;
+    q('UPDATE peminjaman SET status = "kedaluwarsa" WHERE status = "disetujui" AND batas_ambil IS NOT NULL AND batas_ambil < NOW()');
 }
 
 // Selisih hari dari sekarang
@@ -386,6 +411,9 @@ function db() {
 
 // Batas waktu ambil buku setelah disetujui
 function batas_ambil($pinjaman) {
+    if (!empty($pinjaman['batas_ambil'])) {
+        return substr($pinjaman['batas_ambil'], 0, 10);
+    }
     return date('Y-m-d', strtotime($pinjaman['tgl_setuju'] . ' +' . BATAS_AMBIL . ' days'));
 }
 
@@ -407,14 +435,14 @@ function catat_pinjaman($user, $bukuId, $hari, $format, $admin = false) {
     if (!in_array($format, ['fisik', 'ebook'])) $format = 'fisik';
 
     // Cek kuota
-    $jumlah = (int) q('SELECT COUNT(*) FROM peminjaman WHERE user_id = ? AND tgl_kembali IS NULL', [$user['id']])->fetchColumn();
+    $jumlah = (int) q('SELECT COUNT(*) FROM peminjaman WHERE user_id = ? AND ' . SQL_STATUS_AKTIF, [$user['id']])->fetchColumn();
     if ($jumlah >= MAKS_PINJAM) return [false, 'Kuota pinjaman penuh (' . MAKS_PINJAM . ' buku). Kembalikan salah satu dulu.'];
 
     // Cek tunggakan denda
     if (denda_belum_lunas((int) $user['id'])) return [false, 'Ada denda yang belum lunas. Bayar dulu di meja sirkulasi.'];
 
     // Cek sudah pinjam buku ini
-    if (q('SELECT 1 FROM peminjaman WHERE user_id = ? AND buku_id = ? AND tgl_kembali IS NULL', [$user['id'], $bukuId])->fetch()) {
+    if (q('SELECT 1 FROM peminjaman WHERE user_id = ? AND buku_id = ? AND ' . SQL_STATUS_AKTIF, [$user['id'], $bukuId])->fetch()) {
         return [false, 'Buku ini sudah sedang dipinjam.'];
     }
 
@@ -425,7 +453,7 @@ function catat_pinjaman($user, $bukuId, $hari, $format, $admin = false) {
         if (!$buku['file_pdf']) return [false, 'Buku ini tidak tersedia dalam format e-book.'];
         // E-book: langsung aktif
         $jatuh = date('Y-m-d', strtotime("+{$hari} days"));
-        q('INSERT INTO peminjaman (user_id, buku_id, format, durasi, tgl_pinjam, tgl_setuju, tgl_ambil, jatuh_tempo) VALUES (?, ?, "ebook", ?, CURDATE(), CURDATE(), CURDATE(), ?)',
+        q('INSERT INTO peminjaman (user_id, buku_id, format, status, durasi, tgl_pinjam, tgl_setuju, tgl_ambil, disetujui_at, diambil_at, jatuh_tempo) VALUES (?, ?, "ebook", "dipinjam", ?, CURDATE(), CURDATE(), CURDATE(), NOW(), NOW(), ?)',
             [$user['id'], $bukuId, $hari, $jatuh]);
         return [true, '"' . $buku['judul'] . '" (e-book) dipinjam ' . $hari . ' hari.'];
     }
@@ -437,12 +465,12 @@ function catat_pinjaman($user, $bukuId, $hari, $format, $admin = false) {
     if ($admin) {
         // Admin: langsung ambil
         $jatuh = date('Y-m-d', strtotime("+{$hari} days"));
-        q('INSERT INTO peminjaman (user_id, buku_id, format, durasi, tgl_pinjam, tgl_setuju, tgl_ambil, jatuh_tempo) VALUES (?, ?, "fisik", ?, CURDATE(), CURDATE(), CURDATE(), ?)',
+        q('INSERT INTO peminjaman (user_id, buku_id, format, status, durasi, tgl_pinjam, tgl_setuju, tgl_ambil, disetujui_at, diambil_at, jatuh_tempo) VALUES (?, ?, "fisik", "dipinjam", ?, CURDATE(), CURDATE(), CURDATE(), NOW(), NOW(), ?)',
             [$user['id'], $bukuId, $hari, $jatuh]);
     } else {
-        // Anggota: perlu persetujuan petugas, jatuh_tempo dihitung dari sekarang
+        // Anggota: perlu persetujuan petugas, jatuh_tempo sementara diisi tanggal pesan dan dihitung ulang saat diambil
         $jatuh = date('Y-m-d', strtotime("+{$hari} days"));
-        q('INSERT INTO peminjaman (user_id, buku_id, format, durasi, tgl_pinjam, jatuh_tempo) VALUES (?, ?, "fisik", ?, CURDATE(), ?)',
+        q('INSERT INTO peminjaman (user_id, buku_id, format, status, durasi, tgl_pinjam, jatuh_tempo) VALUES (?, ?, "fisik", "menunggu", ?, CURDATE(), ?)',
             [$user['id'], $bukuId, $hari, $jatuh]);
     }
 

@@ -1,27 +1,35 @@
 <?php
 require __DIR__ . '/../config.php';
 wajib_admin();
+cek_kedaluwarsa();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_cek();
 
     if (isset($_POST['setujui']) || isset($_POST['ambil']) || isset($_POST['batal'])) {
-        $p = q('SELECT p.*, b.judul, u.nama FROM peminjaman p JOIN buku b ON b.id = p.buku_id JOIN users u ON u.id = p.user_id
-                WHERE p.id = ? AND p.tgl_ambil IS NULL AND p.tgl_kembali IS NULL', [(int) ($_POST['setujui'] ?? $_POST['ambil'] ?? $_POST['batal'])])->fetch();
+        $p = q('SELECT p.*, b.judul, (b.stok - ' . SQL_DIPINJAM . ') AS tersedia, u.nama FROM peminjaman p JOIN buku b ON b.id = p.buku_id JOIN users u ON u.id = p.user_id
+                WHERE p.id = ? AND p.status IN ("menunggu","disetujui")', [(int) ($_POST['setujui'] ?? $_POST['ambil'] ?? $_POST['batal'])])->fetch();
         if ($p && isset($_POST['setujui'])) {
-            q('UPDATE peminjaman SET tgl_setuju = COALESCE(tgl_setuju, CURDATE()) WHERE id = ?', [$p['id']]);
-            flash('ok', 'Permintaan “' . $p['judul'] . '” dari ' . $p['nama'] . ' disetujui. Siapkan bukunya, anggota punya waktu ' . BATAS_AMBIL . ' hari untuk mengambil.');
-        } elseif ($p && isset($_POST['ambil']) && !$p['tgl_setuju']) {
+            if ($p['status'] !== 'menunggu') {
+                flash('info', 'Permintaan “' . $p['judul'] . '” sudah diproses sebelumnya.');
+            } elseif ((int) $p['tersedia'] <= 0) {
+                flash('error', 'Stok “' . $p['judul'] . '” sedang habis, tidak bisa disetujui.');
+            } else {
+                q('UPDATE peminjaman SET status = "disetujui", tgl_setuju = CURDATE(), disetujui_at = NOW(), batas_ambil = DATE_ADD(NOW(), INTERVAL ' . BATAS_AMBIL . ' DAY) WHERE id = ?', [$p['id']]);
+                flash('ok', 'Permintaan “' . $p['judul'] . '” dari ' . $p['nama'] . ' disetujui. Siapkan bukunya, anggota punya waktu ' . BATAS_AMBIL . ' hari untuk mengambil.');
+            }
+        } elseif ($p && isset($_POST['ambil']) && $p['status'] !== 'disetujui') {
             flash('error', 'Setujui dulu permintaan “' . $p['judul'] . '” sebelum bukunya diserahkan.');
         } elseif ($p && isset($_POST['ambil'])) {
             // Masa pinjam mulai dihitung saat buku berpindah tangan, bukan saat dipesan
             $tempo = date('Y-m-d', strtotime('+' . (int) $p['durasi'] . ' days'));
-            q('UPDATE peminjaman SET tgl_ambil = CURDATE(), jatuh_tempo = ? WHERE id = ?', [$tempo, $p['id']]);
+            q('UPDATE peminjaman SET status = "dipinjam", tgl_ambil = CURDATE(), diambil_at = NOW(), jatuh_tempo = ? WHERE id = ?', [$tempo, $p['id']]);
             flash('ok', '“' . $p['judul'] . '” sudah diambil ' . $p['nama'] . '. Kembali paling lambat ' . tgl($tempo, true) . '.');
         } elseif ($p) {
             $alasan = $_POST['alasan'] ?? '';
             $catatan = trim($_POST['catatan'] ?? '');
-            $apa = $p['tgl_setuju'] ? 'dibatalkan' : 'ditolak';
+            $statusBaru = $p['status'] === 'disetujui' ? 'dibatalkan' : 'ditolak';
+            $apa = $statusBaru === 'dibatalkan' ? 'dibatalkan' : 'ditolak';
             if (!in_array($alasan, ALASAN_TOLAK, true)) {
                 flash('error', 'Pilih alasan kenapa permintaan “' . $p['judul'] . '” ' . $apa . '.');
             } elseif ($alasan === 'Lainnya' && $catatan === '') {
@@ -29,9 +37,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (mb_strlen($catatan) > 150) {
                 flash('error', 'Catatan maksimal 150 karakter.');
             } else {
-                q('DELETE FROM peminjaman WHERE id = ?', [$p['id']]);
-                $pesan = 'Permintaan pinjam “' . $p['judul'] . '” ' . $apa . ' petugas. '
-                    . ($alasan === 'Lainnya' ? 'Alasan: ' . $catatan : 'Alasan: ' . $alasan . ($catatan !== '' ? ' (' . $catatan . ')' : '')) . '.';
+                $alasanTolak = $alasan === 'Lainnya' ? $catatan : $alasan . ($catatan !== '' ? ' (' . $catatan . ')' : '');
+                q('UPDATE peminjaman SET status = ?, alasan_tolak = ? WHERE id = ?', [$statusBaru, $alasanTolak, $p['id']]);
+                $pesan = 'Permintaan pinjam “' . $p['judul'] . '” ' . $apa . ' petugas. Alasan: ' . $alasanTolak . '.';
                 q('INSERT INTO pemberitahuan (user_id, pesan) VALUES (?, ?)', [$p['user_id'], $pesan]);
                 flash('ok', 'Permintaan “' . $p['judul'] . '” milik ' . $p['nama'] . ' ' . $apa . ' dan anggota sudah diberi tahu.');
             }
@@ -42,16 +50,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['kembali'])) {
         $kondisi = array_key_exists($_POST['kondisi'] ?? '', DENDA_KONDISI) ? $_POST['kondisi'] : 'baik';
         $p = q('SELECT p.*, b.judul, u.nama FROM peminjaman p JOIN buku b ON b.id = p.buku_id JOIN users u ON u.id = p.user_id
-                WHERE p.id = ? AND p.tgl_ambil IS NOT NULL AND p.tgl_kembali IS NULL', [(int) $_POST['kembali']])->fetch();
+                WHERE p.id = ? AND p.status = "dipinjam"', [(int) $_POST['kembali']])->fetch();
         if ($p && $p['format'] === 'ebook') {
-            q('UPDATE peminjaman SET tgl_kembali = CURDATE(), kondisi = "baik" WHERE id = ?', [$p['id']]);
+            q('UPDATE peminjaman SET status = "dikembalikan", tgl_kembali = CURDATE(), kondisi = "baik" WHERE id = ?', [$p['id']]);
             flash('ok', 'Pinjaman e-book “' . $p['judul'] . '” milik ' . $p['nama'] . ' diakhiri.');
         } elseif ($p) {
             // Denda telat dihitung sampai buku diserahkan (tgl_ajuan), bukan sampai petugas selesai mengecek
             $diserahkan = $p['tgl_ajuan'] ?: date('Y-m-d');
             $denda = hitung_denda($p['jatuh_tempo'], $diserahkan);
             $dendaKondisi = DENDA_KONDISI[$kondisi];
-            q('UPDATE peminjaman SET tgl_ajuan = ?, tgl_kembali = CURDATE(), denda = ?, kondisi = ?, denda_kondisi = ? WHERE id = ?',
+            q('UPDATE peminjaman SET status = "dikembalikan", tgl_ajuan = ?, tgl_kembali = CURDATE(), denda = ?, kondisi = ?, denda_kondisi = ? WHERE id = ?',
                 [$diserahkan, $denda, $kondisi, $dendaKondisi, $p['id']]);
             // Eksemplar yang hilang keluar dari koleksi; naikkan lagi stoknya di menu Koleksi bila diganti
             if ($kondisi === 'hilang') q('UPDATE buku SET stok = stok - 1 WHERE id = ? AND stok > 0', [$p['buku_id']]);
@@ -92,11 +100,11 @@ if ($cari !== '') {
 }
 $semua = q("SELECT p.*, b.judul, u.nama, u.no_anggota FROM peminjaman p
             JOIN buku b ON b.id = p.buku_id JOIN users u ON u.id = p.user_id
-            WHERE p.tgl_kembali IS NULL $filter ORDER BY p.tgl_ajuan, p.jatuh_tempo", $args)->fetchAll();
-$permintaan = array_filter($semua, fn($p) => !$p['tgl_setuju']);
-$pesanan = array_filter($semua, fn($p) => $p['tgl_setuju'] && !$p['tgl_ambil']);
-$menunggu = array_filter($semua, fn($p) => $p['tgl_ajuan']);
-$aktif = array_filter($semua, fn($p) => $p['tgl_ambil'] && !$p['tgl_ajuan']);
+            WHERE p." . SQL_STATUS_AKTIF . " $filter ORDER BY p.tgl_ajuan, p.jatuh_tempo", $args)->fetchAll();
+$permintaan = array_filter($semua, fn($p) => $p['status'] === 'menunggu');
+$pesanan = array_filter($semua, fn($p) => $p['status'] === 'disetujui');
+$menunggu = array_filter($semua, fn($p) => $p['status'] === 'dipinjam' && $p['tgl_ajuan']);
+$aktif = array_filter($semua, fn($p) => $p['status'] === 'dipinjam' && !$p['tgl_ajuan']);
 $antrean = q('SELECT a.tgl_tersedia, a.dibuat, b.judul, u.nama, u.no_anggota, ' . SQL_POSISI_ANTREAN . " AS posisi FROM antrean a
               JOIN buku b ON b.id = a.buku_id JOIN users u ON u.id = a.user_id
               WHERE 1 $filter ORDER BY a.tgl_tersedia IS NULL, b.judul, a.dibuat, a.id", $args)->fetchAll();

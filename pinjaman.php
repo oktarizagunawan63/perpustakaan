@@ -4,6 +4,8 @@ require __DIR__ . '/config.php';
 $u = wajib_login();
 if ($u['role'] === 'admin') redirect('admin/sirkulasi.php');
 
+cek_kedaluwarsa();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_cek();
 
@@ -20,18 +22,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $id = (int) ($_POST['perpanjang'] ?? $_POST['kembalikan'] ?? $_POST['batal'] ?? 0);
     $p = q('SELECT p.*, b.judul, ' . SQL_DIANTRE . ' AS diantre FROM peminjaman p JOIN buku b ON b.id = p.buku_id
-            WHERE p.id = ? AND p.user_id = ? AND p.tgl_kembali IS NULL', [$id, $u['id']])->fetch();
+            WHERE p.id = ? AND p.user_id = ? AND p.' . SQL_STATUS_AKTIF, [$id, $u['id']])->fetch();
 
     if (!$p) {
         flash('error', 'Pinjaman tidak ditemukan.');
     } elseif (isset($_POST['batal'])) {
-        if ($p['tgl_ambil']) {
+        if (!in_array($p['status'], ['menunggu', 'disetujui'], true)) {
             flash('error', '“' . $p['judul'] . '” sudah diambil, jadi tidak bisa dibatalkan. Ajukan pengembalian saja.');
         } else {
-            q('DELETE FROM peminjaman WHERE id = ?', [$p['id']]);
+            q('UPDATE peminjaman SET status = "dibatalkan" WHERE id = ? AND user_id = ? AND status IN ("menunggu","disetujui")', [$p['id'], $u['id']]);
             flash('ok', 'Pesanan buku fisik “' . $p['judul'] . '” dibatalkan.');
         }
-    } elseif (!$p['tgl_ambil']) {
+    } elseif ($p['status'] !== 'dipinjam') {
         flash('error', 'Ambil dulu “' . $p['judul'] . '” di meja sirkulasi.');
     } elseif (isset($_POST['perpanjang'])) {
         if ($p['tgl_ajuan']) {
@@ -44,18 +46,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', '“' . $p['judul'] . '” sedang diantre anggota lain, jadi tidak bisa diperpanjang.');
         } else {
             $baru = date('Y-m-d', strtotime($p['jatuh_tempo'] . ' +' . (int) $p['durasi'] . ' days'));
-            q('UPDATE peminjaman SET jatuh_tempo = ?, perpanjang = perpanjang + 1 WHERE id = ?', [$baru, $p['id']]);
+            q('UPDATE peminjaman SET jatuh_tempo = ?, perpanjang = perpanjang + 1 WHERE id = ? AND user_id = ?', [$baru, $p['id'], $u['id']]);
             flash('ok', '“' . $p['judul'] . '” diperpanjang sampai ' . tgl($baru, true) . '.');
         }
     } elseif ($p['format'] === 'ebook') {
         // E-book: langsung selesai, akses baca ditutup
-        q('UPDATE peminjaman SET tgl_kembali = CURDATE(), kondisi = "baik" WHERE id = ?', [$p['id']]);
+        q('UPDATE peminjaman SET status = "dikembalikan", tgl_kembali = CURDATE(), kondisi = "baik" WHERE id = ? AND user_id = ?', [$p['id'], $u['id']]);
         flash('ok', 'E-book “' . $p['judul'] . '” sudah dikembalikan. Terima kasih!');
     } elseif ($p['tgl_ajuan']) {
         flash('info', '“' . $p['judul'] . '” sudah diajukan dan sedang dicek petugas.');
     } else {
         // Buku fisik: menunggu petugas mengecek kondisi dan menyetujui
-        q('UPDATE peminjaman SET tgl_ajuan = CURDATE() WHERE id = ?', [$p['id']]);
+        q('UPDATE peminjaman SET tgl_ajuan = CURDATE() WHERE id = ? AND user_id = ?', [$p['id'], $u['id']]);
         $denda = hitung_denda($p['jatuh_tempo']);
         flash('ok', 'Pengembalian “' . $p['judul'] . '” diajukan. Serahkan bukunya ke meja sirkulasi — pengembalian selesai setelah petugas mengecek kondisi buku dan menyetujuinya.'
             . ($denda ? ' Denda keterlambatan ' . rupiah($denda) . ' tercatat.' : ''));
@@ -64,12 +66,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $aktif = q('SELECT p.*, b.judul, b.penulis, b.no_panggil, b.rak, b.sampul, b.file_pdf, ' . SQL_DIANTRE . ' AS diantre FROM peminjaman p JOIN buku b ON b.id = p.buku_id
-            WHERE p.user_id = ? AND p.tgl_kembali IS NULL ORDER BY p.tgl_ambil IS NOT NULL, p.tgl_ajuan IS NOT NULL, p.jatuh_tempo', [$u['id']])->fetchAll();
+            WHERE p.user_id = ? AND p.' . SQL_STATUS_AKTIF . ' ORDER BY p.status = "dipinjam", p.tgl_ajuan IS NOT NULL, p.jatuh_tempo', [$u['id']])->fetchAll();
 $riwayat = q('SELECT p.*, b.judul, b.penulis FROM peminjaman p JOIN buku b ON b.id = p.buku_id
-              WHERE p.user_id = ? AND p.tgl_kembali IS NOT NULL ORDER BY p.tgl_kembali DESC LIMIT 30', [$u['id']])->fetchAll();
+              WHERE p.user_id = ? AND p.status IN ("ditolak","kedaluwarsa","dibatalkan","dikembalikan")
+              ORDER BY COALESCE(p.tgl_kembali, DATE(p.disetujui_at), p.tgl_pinjam) DESC, p.id DESC LIMIT 30', [$u['id']])->fetchAll();
 // Tagihan diambil terpisah supaya denda lama di luar batas riwayat tetap terlihat rinciannya
 $tagihan = q('SELECT p.*, b.judul FROM peminjaman p JOIN buku b ON b.id = p.buku_id
-              WHERE p.user_id = ? AND p.tgl_kembali IS NOT NULL AND p.denda_lunas IS NULL AND p.denda + p.denda_kondisi > 0
+              WHERE p.user_id = ? AND p.status = "dikembalikan" AND p.denda_lunas IS NULL AND p.denda + p.denda_kondisi > 0
               ORDER BY p.tgl_kembali DESC, p.id DESC', [$u['id']])->fetchAll();
 $totalTagihan = denda_belum_lunas((int) $u['id']);
 $antrean = q('SELECT a.*, b.judul, b.penulis, b.sampul, b.no_panggil, ' . SQL_POSISI_ANTREAN . ' AS posisi
@@ -79,14 +82,36 @@ $pemberitahuan = q('SELECT id, pesan FROM pemberitahuan WHERE user_id = ? AND di
 $riwayatPesan = q('SELECT pesan, dibuat FROM pemberitahuan WHERE user_id = ? AND dibaca IS NOT NULL ORDER BY dibuat DESC, id DESC LIMIT 30', [$u['id']])->fetchAll();
 
 $dendaBerjalan = array_sum(array_map('denda_pinjaman', $aktif));
-$belumDisetujui = count(array_filter($aktif, fn($p) => !$p['tgl_setuju'] && !$p['tgl_ambil']));
-$siapAmbil = count(array_filter($aktif, fn($p) => $p['tgl_setuju'] && !$p['tgl_ambil']));
-$menunggu = count(array_filter($aktif, fn($p) => $p['tgl_ajuan']));
-$berjalan = array_values(array_filter($aktif, fn($p) => $p['tgl_ambil'] && !$p['tgl_ajuan']));
+$belumDisetujui = count(array_filter($aktif, fn($p) => $p['status'] === 'menunggu'));
+$siapAmbil = count(array_filter($aktif, fn($p) => $p['status'] === 'disetujui'));
+$menunggu = count(array_filter($aktif, fn($p) => $p['status'] === 'dipinjam' && $p['tgl_ajuan']));
+$berjalan = array_values(array_filter($aktif, fn($p) => $p['status'] === 'dipinjam' && !$p['tgl_ajuan']));
 usort($berjalan, fn($a, $b) => strcmp($a['jatuh_tempo'], $b['jatuh_tempo']));
 $terdekat = $berjalan[0]['jatuh_tempo'] ?? null;
 $adaTelat = (bool) array_filter($berjalan, fn($p) => $p['format'] === 'fisik' && $p['jatuh_tempo'] < date('Y-m-d'));
-$keteranganJumlah = array_filter([$belumDisetujui ? "$belumDisetujui menunggu persetujuan" : '', $siapAmbil ? "$siapAmbil siap diambil" : '', $menunggu ? "$menunggu menunggu dicek" : '']);
+$keteranganJumlah = array_filter([$belumDisetujui ? "$belumDisetujui menunggu validasi" : '', $siapAmbil ? "$siapAmbil siap diambil" : '', $menunggu ? "$menunggu menunggu dicek" : '']);
+
+// Render indikator 3 tahap untuk peminjaman buku fisik aktif
+$renderStepper = function (string $status): string {
+    if (!in_array($status, ['menunggu', 'disetujui', 'dipinjam'], true)) return '';
+    $langkah = ['Diajukan', 'Validasi petugas', 'Diambil'];
+    $aktifIdx = match ($status) {
+        'menunggu' => 1,
+        'disetujui' => 2,
+        'dipinjam' => 3,
+    };
+    $html = '<ol class="stepper" aria-label="Tahap peminjaman">';
+    foreach ($langkah as $i => $nama) {
+        $kls = 'stepper__step';
+        if ($status === 'dipinjam' || $i < $aktifIdx) {
+            $kls .= ' stepper__step--done';
+        } elseif ($i === $aktifIdx) {
+            $kls .= ' stepper__step--active';
+        }
+        $html .= '<li class="' . $kls . '"><span class="stepper__dot" aria-hidden="true"></span><span class="stepper__label">' . e($nama) . '</span></li>';
+    }
+    return $html . '</ol>';
+};
 
 $judul = 'Pinjaman saya';
 $menu = 'pinjaman';
@@ -144,10 +169,10 @@ require __DIR__ . '/partials/header.php';
             <div class="loan__body">
               <h3><a href="<?= url('buku.php?id=' . $p['buku_id']) ?>"><?= e($p['judul']) ?></a></h3>
               <p class="muted"><span class="tag <?= $ebook ? 'tag--accent' : '' ?>"><?= LABEL_FORMAT[$p['format']] ?></span> <?= e($p['penulis']) ?></p>
-              <?php if (!$p['tgl_ambil']): ?>
+              <?php if (in_array($p['status'], ['menunggu', 'disetujui'], true)): ?>
                 <p class="loan__dates">Dipesan <?= tgl($p['tgl_pinjam']) ?> · lama pinjam <?= (int) $p['durasi'] ?> hari, dihitung sejak diambil</p>
-                <?php if ($p['tgl_setuju']): ?>
-                  <p class="loan__note">Disetujui petugas. Ambil di meja sirkulasi<?= $p['rak'] !== '' ? ' · Rak ' . e($p['rak']) : '' ?> paling lambat <?= tgl(batas_ambil($p), true) ?>. Lewat dari itu pesanan batal otomatis.</p>
+                <?php if ($p['status'] === 'disetujui'): ?>
+                  <p class="loan__note">Ambil bukunya sebelum <?= tgl(batas_ambil($p), true) ?> di meja petugas<?= $p['rak'] !== '' ? ' · Rak ' . e($p['rak']) : '' ?>.</p>
                 <?php else: ?>
                   <p class="loan__note">Petugas sedang memeriksa permintaanmu. Setelah disetujui, kamu punya <?= BATAS_AMBIL ?> hari untuk mengambil bukunya.</p>
                 <?php endif ?>
@@ -160,11 +185,12 @@ require __DIR__ . '/partials/header.php';
                   <p class="loan__note">Kembalikan di meja sirkulasi<?= $p['rak'] !== '' ? ' · Rak ' . e($p['rak']) : '' ?><?= $p['no_panggil'] !== '' ? ' · <span class="callno">' . e($p['no_panggil']) . '</span>' : '' ?></p>
                 <?php endif ?>
               <?php endif ?>
+              <?php if (!$ebook): ?><?= $renderStepper($p['status']) ?><?php endif ?>
             </div>
             <div class="loan__side">
               <span class="due due--<?= $kls ?>"><?= e($lbl) ?></span>
               <?php if ($denda): ?><span class="loan__fine">Denda <?= rupiah($denda) ?></span><?php endif ?>
-              <?php if (!$p['tgl_ambil']): ?>
+              <?php if (in_array($p['status'], ['menunggu', 'disetujui'], true)): ?>
                 <form method="post" data-confirm="Batalkan pesanan buku fisik “<?= e($p['judul']) ?>”?">
                   <?= csrf_field() ?>
                   <button class="btn-text loan__return" name="batal" value="<?= $p['id'] ?>">Batalkan pesanan</button>
@@ -266,7 +292,19 @@ require __DIR__ . '/partials/header.php';
               <td><a href="<?= url('buku.php?id=' . $r['buku_id']) ?>"><?= e($r['judul']) ?></a><span class="sub"><?= e($r['penulis']) ?></span></td>
               <td><?= LABEL_FORMAT[$r['format']] ?></td>
               <td><?= tgl($r['tgl_ambil'] ?: $r['tgl_pinjam']) ?></td>
-              <td><?= tgl($r['tgl_kembali']) ?><?= $r['denda'] ? ' <span class="tag tag--late">terlambat</span>' : '' ?><?= in_array($r['kondisi'], ['rusak', 'hilang'], true) ? ' <span class="tag tag--late">' . $r['kondisi'] . '</span>' : '' ?></td>
+              <td>
+                <?php if ($r['status'] === 'ditolak'): ?>
+                  <span class="tag tag--late">Ditolak</span>
+                  <?php if (!empty($r['alasan_tolak'])): ?><span class="sub">Permintaan ditolak. Alasan: <?= e($r['alasan_tolak']) ?></span><?php endif ?>
+                <?php elseif ($r['status'] === 'kedaluwarsa'): ?>
+                  <span class="tag tag--late">Kedaluwarsa</span>
+                  <span class="sub">Buku tidak diambil sampai batas waktu, pesanan dibatalkan otomatis.</span>
+                <?php elseif ($r['status'] === 'dibatalkan'): ?>
+                  <span class="tag">Dibatalkan</span>
+                <?php else: ?>
+                  <?= tgl($r['tgl_kembali']) ?><?= $r['denda'] ? ' <span class="tag tag--late">terlambat</span>' : '' ?><?= in_array($r['kondisi'], ['rusak', 'hilang'], true) ? ' <span class="tag tag--late">' . e($r['kondisi']) . '</span>' : '' ?>
+                <?php endif ?>
+              </td>
               <td class="num"><?= $t ? rupiah($t) . ($r['denda_lunas'] ? '<span class="sub">lunas</span>' : '<span class="sub due-text--late">belum lunas</span>') : '—' ?></td>
             </tr>
           <?php endforeach ?>
